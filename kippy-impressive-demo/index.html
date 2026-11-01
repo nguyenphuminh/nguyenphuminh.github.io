@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Abyssal Choir: a stealth echolocation game in a lightless trench, made with the Kippy engine." />
+    <!-- Only the game's own files may load or run, and no other site can be contacted -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-BiKEJMsQ97ev0ybvEDnKlQjK5nP7l4GwSUSbfVwlsu0='; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'" />
+    <title>Abyssal Choir</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+        { "imports": { "kippy": "./vendor/kippy/kippy.min.js" } }
+    </script>
+</head>
+<body>
+    <canvas id="game" tabindex="0"></canvas>
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>
