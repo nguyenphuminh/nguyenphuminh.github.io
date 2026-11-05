@@ -1,23 +1,25 @@
-// The adaptive brain (BRD 2.2.4): habit profile + pretrained policy + online learner.
-import { ACTIONS, MOVES, isActionAllowed } from "../combat/index.js";
+// A boss's adaptive brain (BRD 2.2.4): shared habit profile + the boss's pretrained policy + its online learner.
+import { isActionAllowed } from "../combat/index.js";
 import { createRng } from "../../shared/rng.js";
 import { createHabitProfile } from "./habits.js";
 import { encodeFeatures, FEATURE_SIZE } from "./features.js";
 import { bucketOf, createOnlineLearner } from "./online.js";
 import { stepReward } from "./reward.js";
 
-const A = ACTIONS.length;
 export const BRAIN_DEFAULTS = { temperature: 0.06, epsilon: 0.03 };
 
 /**
  * @param {object} o
+ * @param {object} o.bossDef  the boss's definition (its moves and action order)
+ * @param {object} o.habits   the shared habit profile (observed by its owner, read here)
  * @param {{scores:(f:number[])=>number[]}|null} [o.policy]  pretrained policy, or null to rely on online learning alone
- * @param {{habits?:object, online?:object}|null} [o.memory]  saved brain memory
+ * @param {object|null} [o.online]  saved online-learner state for this boss
  */
-export function createBrain({ policy = null, memory = null, seed = 1, options = {} } = {}) {
-    const cfg = { ...BRAIN_DEFAULTS, ...options };
-    const habits = createHabitProfile(memory?.habits);
-    const online = createOnlineLearner(memory?.online);
+export function createBrain({ bossDef, habits, policy = null, online: saved = null, seed = 1, options = {} }) {
+    const cfg = { ...BRAIN_DEFAULTS, ...(bossDef.brain ?? {}), ...options };
+    const ACTIONS = bossDef.actions;
+    const A = ACTIONS.length;
+    const online = createOnlineLearner(A, saved);
     const rng = createRng(seed);
     const features = new Array(FEATURE_SIZE);
     const q = new Float64Array(A);
@@ -25,13 +27,13 @@ export function createBrain({ policy = null, memory = null, seed = 1, options = 
     let reward = 0; // outcome of the pending move so far
     let moveStats = {};
 
-    // Combined preference per move; disallowed moves get -Infinity.
+    // Combined preference per move; moves not available in this phase get -Infinity.
     function evaluate(view, habitProfile = habits, learner = online) {
         encodeFeatures(view, habitProfile, features);
         const base = policy ? policy.scores(features) : null;
         const bucket = bucketOf(view);
         for (let a = 0; a < A; a++) {
-            q[a] = isActionAllowed(ACTIONS[a], view.boss.phase) ? (base ? base[a] : 0) + learner.correction(bucket, a) : -Infinity;
+            q[a] = isActionAllowed(bossDef, ACTIONS[a], view.boss.phase, view.boss) ? (base ? base[a] : 0) + learner.correction(bucket, a) : -Infinity;
         }
         return bucket;
     }
@@ -58,11 +60,12 @@ export function createBrain({ policy = null, memory = null, seed = 1, options = 
     }
 
     return {
+        bossDef,
+
         /** Picks the boss's next move. Called only when the boss is free (between moves). */
         decide(view) {
             learn();
             const bucket = evaluate(view);
-
             const allowed = [];
             for (let a = 0; a < A; a++) if (q[a] !== -Infinity) allowed.push(a);
             let action;
@@ -86,12 +89,11 @@ export function createBrain({ policy = null, memory = null, seed = 1, options = 
             return id;
         },
 
-        /** Feed every fixed step of the fight. */
-        observe(view, events, dt) {
-            habits.observe(view, events, dt);
+        /** Feed every fixed step of this boss's fight (rewards and move results; habits are fed by their owner). */
+        observe(events, dt) {
             reward += stepReward(events, dt);
             for (const e of events) {
-                if (e.type === "playerHit" && e.moveId) {
+                if (e.type === "playerHit" && e.isBoss && e.moveId) {
                     const s = (moveStats[e.moveId] ??= { uses: 0, hits: 0, damage: 0 });
                     s.hits += 1;
                     s.damage += e.damage;
@@ -100,17 +102,15 @@ export function createBrain({ policy = null, memory = null, seed = 1, options = 
         },
 
         startAttempt() {
-            habits.startAttempt();
             pending = null;
             reward = 0;
             moveStats = {};
         },
 
-        /** Closes the attempt (won, died or quit) and returns what happened in it. */
+        /** Closes the attempt (won, died or quit) and returns this boss's move results for it. */
         endAttempt() {
-            habits.endAttempt();
             learn();
-            return { counters: habits.attemptCounters(), moveStats: { ...moveStats } };
+            return { moveStats: { ...moveStats } };
         },
 
         /**
@@ -119,13 +119,13 @@ export function createBrain({ policy = null, memory = null, seed = 1, options = 
          */
         preferences(fresh = false) {
             const habitProfile = fresh ? createHabitProfile() : habits;
-            const learner = fresh ? createOnlineLearner() : online;
+            const learner = fresh ? createOnlineLearner(A) : online;
             const totals = new Float64Array(A);
             let count = 0;
             for (const dist of [30, 70, 120, 200]) {
                 for (const mode of ["neutral", "attack", "roll", "heal"]) {
-                    for (const phase of [1, 2]) {
-                        evaluate(referenceView(dist, mode, phase), habitProfile, learner);
+                    for (let phase = 1; phase <= (bossDef.phases ?? 1); phase++) {
+                        evaluate(referenceView(bossDef, dist, mode, phase), habitProfile, learner);
                         const probs = softmax(q, cfg.temperature);
                         for (let a = 0; a < A; a++) totals[a] += probs[a];
                         count++;
@@ -135,14 +135,17 @@ export function createBrain({ policy = null, memory = null, seed = 1, options = 
             return Object.fromEntries(ACTIONS.map((id, a) => [id, totals[a] / count]));
         },
 
-        habits,
-        moveLabel: (id) => MOVES[id].label,
-        snapshot: () => ({ habits: habits.snapshot(), online: online.snapshot() }),
+        moveLabel: (id) => bossDef.moves[id].label,
+        snapshot: () => online.snapshot(),
     };
 }
 
-function referenceView(dist, mode, phase) {
+function referenceView(bossDef, dist, mode, phase) {
     const bossX = 300;
+    const boss = {
+        x: bossX, y: 228, facing: -1, hp: Math.round(bossDef.maxHp * (phase === 1 ? 0.8 : 0.35)), maxHp: bossDef.maxHp,
+        stagger: 20, maxStagger: bossDef.stagger?.max ?? 100, phase, state: "ready", isBoss: true, heals: bossDef.heals ?? 0,
+    };
     return {
         time: 0,
         bounds: { minX: 24, maxX: 456, floorY: 228 },
@@ -150,7 +153,8 @@ function referenceView(dist, mode, phase) {
             x: bossX - dist, y: 228, vx: 0, vy: 0, grounded: mode !== "air", facing: 1, state: mode, stateTime: 0, mode,
             combo: 0, hp: 70, maxHp: 100, stamina: 70, maxStamina: 100, heals: 2, maxHeals: 3,
         },
-        boss: { x: bossX, y: 228, facing: -1, hp: phase === 1 ? 340 : 150, maxHp: 420, stagger: 20, maxStagger: 100, phase, state: "ready" },
+        boss,
+        enemies: [boss],
         hazards: [],
     };
 }

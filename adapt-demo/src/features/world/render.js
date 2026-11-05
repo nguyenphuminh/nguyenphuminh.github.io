@@ -1,26 +1,5 @@
 // Draws the world: parallax backgrounds, floors, arena walls and decoration.
-import { VIEW_WIDTH, WORLD } from "./layout.js";
-
-// Decoration placement (world x). Hanging pieces are drawn from the top; the rest stand on the floor.
-const DECOR = [
-    { key: "statue", x: 70 },
-    { key: "candles", x: 128 },
-    { key: "candles", x: 174 },
-    { key: "brokenPillar", x: 262 },
-    { key: "banner", x: 338 },
-    { key: "rubble", x: 430 },
-    { key: "chains", x: 520, hang: 70 },
-    { key: "statue", x: 610 },
-    { key: "rubble", x: 700 },
-    { key: "brokenPillar", x: 780 },
-    { key: "chains", x: 850, hang: 50 },
-    { key: "banner", x: 905 },
-    { key: "candles", x: 984 },
-    { key: "chains", x: WORLD.arenaLeft + 150, hang: 30, back: true },
-    { key: "chains", x: WORLD.arenaLeft + 330, hang: 46, back: true },
-    { key: "candles", x: WORLD.arenaLeft + 44 },
-    { key: "candles", x: WORLD.arenaLeft + 436 },
-];
+import { VIEW_WIDTH } from "./areas.js";
 
 function drawTiled(ctx, img, offsetX, y = 0) {
     if (!img) return;
@@ -37,14 +16,27 @@ function spriteOf(prop) {
     return { img: prop.sheet, sx: (f % cols) * prop.frameWidth, sy: Math.floor(f / cols) * prop.frameHeight, w: prop.frameWidth, h: prop.frameHeight };
 }
 
-export function createWorldRenderer(art) {
+/** Draws one area. Decoration: area.decor (world x) and area.arenaDecor (x relative to the arena's left edge). */
+export function createWorldRenderer(art, area) {
     const props = art.props ?? {};
     const tiles = art.tiles ?? {};
     const bg = art.backgrounds ?? {};
-    const placed = DECOR.filter((d) => props[d.key]);
+    const WORLD = area;
+    const placed = [
+        ...(area.decor ?? []),
+        ...(area.arenaDecor ?? []).map((d) => ({ ...d, x: area.arenaLeft + d.dx, back: true })),
+    ].filter((d) => props[d.key]);
+    let backdrop = area.backdrop ? bg[area.backdrop] ?? null : null;
+    const layers = { sky: bg[area.bg?.sky] ?? bg.sky, far: bg[area.bg?.far] ?? bg.far, mid: bg[area.bg?.mid] ?? bg.mid };
+    const floorTile = tiles[area.floor] ?? tiles.floor;
+    const segments = (area.floorSegments ?? []).map((seg) => ({ toX: seg.toX, img: tiles[seg.tile] ?? floorTile }));
+    const tileAt = (x) => {
+        for (const seg of segments) if (x < seg.toX) return seg.img;
+        return x >= WORLD.arenaLeft && tiles.arenaFloor && !area.floor ? tiles.arenaFloor : floorTile;
+    };
 
     function drawFloor(ctx, cameraX) {
-        const floor = tiles.floor;
+        const floor = floorTile;
         if (!floor) {
             ctx.fillStyle = "#1a1726";
             ctx.fillRect(cameraX, WORLD.floorY, VIEW_WIDTH, 60);
@@ -53,8 +45,7 @@ export function createWorldRenderer(art) {
         const w = floor.width;
         const start = Math.floor(cameraX / w) * w;
         for (let x = start; x < cameraX + VIEW_WIDTH + w; x += w) {
-            const img = x >= WORLD.arenaLeft && tiles.arenaFloor ? tiles.arenaFloor : floor;
-            ctx.drawImage(img, x, WORLD.floorY);
+            ctx.drawImage(tileAt(x), x, WORLD.floorY);
         }
     }
 
@@ -81,14 +72,19 @@ export function createWorldRenderer(art) {
     return {
         /** Screen-space parallax layers. */
         drawBackground(ctx, cameraX) {
-            if (bg.sky) ctx.drawImage(bg.sky, 0, 0);
-            drawTiled(ctx, bg.far, cameraX * 0.2);
-            drawTiled(ctx, bg.mid, cameraX * 0.5);
+            if (layers.sky) ctx.drawImage(layers.sky, 0, 0);
+            drawTiled(ctx, layers.far, cameraX * 0.2);
+            drawTiled(ctx, layers.mid, cameraX * 0.5);
+        },
+
+        /** Swaps the arena backdrop (e.g. the Hall's far wall opening after the Mirrorwright falls). */
+        setBackdrop(key) {
+            backdrop = bg[key] ?? backdrop;
         },
 
         /** World-space layers behind the actors. */
         drawBack(ctx, cameraX, { sealed }) {
-            if (bg.arenaBackdrop && cameraX + VIEW_WIDTH > WORLD.arenaLeft) ctx.drawImage(bg.arenaBackdrop, WORLD.arenaLeft, 0);
+            if (backdrop && cameraX + VIEW_WIDTH > WORLD.arenaLeft) ctx.drawImage(backdrop, WORLD.arenaLeft, 0);
             drawDecor(ctx, cameraX, true);
             drawFloor(ctx, cameraX);
             drawDecor(ctx, cameraX, false);

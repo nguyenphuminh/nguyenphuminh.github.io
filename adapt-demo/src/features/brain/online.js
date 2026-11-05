@@ -4,12 +4,10 @@
 // learner only shifts preferences between moves; it never drifts the whole policy.
 //   general:   how well move a works against this player overall
 //   situation: how well move a works in a coarse kind of situation (distance band × player action × phase)
-import { ACTIONS } from "../combat/index.js";
 import { clamp } from "../../shared/math.js";
 
 const MODE_GROUP = { neutral: 0, hurt: 0, dead: 0, attack: 1, heavy: 1, roll: 2, parry: 2, heal: 3, air: 4 };
 export const BUCKET_COUNT = 3 * 5 * 2;
-const A = ACTIONS.length;
 const GAIN = 1.5;
 const LIMIT = 0.6;
 
@@ -22,7 +20,7 @@ export function bucketOf(view) {
 const restore = (arr, length) =>
     Array.isArray(arr) && arr.length === length && arr.every(Number.isFinite) ? Float64Array.from(arr) : new Float64Array(length);
 
-export function createOnlineLearner(saved = null) {
+export function createOnlineLearner(A, saved = null) {
     const s = {
         gMean: restore(saved?.gMean, A),
         gN: restore(saved?.gN, A),

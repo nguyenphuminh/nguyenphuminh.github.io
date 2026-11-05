@@ -1,6 +1,5 @@
 // Small UI helpers shared by scenes (screen space, 480×270).
 import { drawText, measureText } from "../presentation/index.js";
-import { CONTROLS } from "./input.js";
 
 export const COLORS = {
     text: "#e8e6f0",
@@ -45,13 +44,6 @@ export function wrapText(text, maxWidth, scale = 1) {
     }
     if (line) lines.push(line);
     return lines;
-}
-
-export function drawControls(ctx, x, y) {
-    CONTROLS.forEach(([action, keys], i) => {
-        drawText(ctx, action, x, y + i * 13, { color: COLORS.dim });
-        drawText(ctx, keys, x + 110, y + i * 13, { color: COLORS.text });
-    });
 }
 
 export function formatTime(seconds) {

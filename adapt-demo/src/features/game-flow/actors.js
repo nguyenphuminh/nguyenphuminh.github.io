@@ -1,7 +1,7 @@
 // Kippy entities that show the simulation: the player, the boss and hazards.
 // Animation frames for actions are picked from the simulation's stage progress so poses match hit timing.
 import { Animation, Animator, Entity, SpriteSheet } from "kippy";
-import { BOSS, PLAYER } from "../combat/index.js";
+import { PLAYER } from "../combat/index.js";
 
 function buildAnimator(sheet, anims, fallback) {
     const animations = {};
@@ -86,6 +86,27 @@ export class SpriteActor extends Entity {
         this.frame(name, start + Math.min(count - 1, Math.floor(Math.max(0, t) * count)));
     }
 
+    /** The frame being shown, with where and how it is drawn (used for delayed reflections). */
+    snapshot() {
+        const f = this.getFrame();
+        if (!f || !this.visible) return null;
+        return { ...f, x: this.position.x, y: this.position.y, flipX: this.flipX, ax: this.art.anchorX, ay: this.art.anchorY };
+    }
+
+    /** Draws a snapshot (or the current frame) upside down below the floor line: a reflection on a polished floor. */
+    renderFloorReflection(ctx, floorY, alpha, snap = this.snapshot()) {
+        if (!snap) return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(snap.x - 80, floorY, 160, 42);
+        ctx.clip();
+        ctx.translate(Math.round(snap.x), Math.round(floorY + (floorY - snap.y)));
+        ctx.scale(snap.flipX ? -1 : 1, -1);
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(snap.texture, snap.sx, snap.sy, snap.sw, snap.sh, -snap.ax, -snap.ay, snap.dw, snap.dh);
+        ctx.restore();
+    }
+
     render(ctx) {
         if (!this.visible) return;
         const f = this.getFrame();
@@ -137,6 +158,7 @@ export function syncPlayer(actor, p, time) {
         case "parry": actor.phased("parry", PARRY_SEGMENTS, t); break;
         case "heal": actor.progress("heal", t / PLAYER.heal.duration); break;
         case "hurt": actor.progress("hurt", t / PLAYER.hurt.stun); break;
+        case "deflected": actor.progress("hurt", t / PLAYER.deflected.stun); break;
         case "dead": actor.progress("death", t / 1.2); break;
         default: actor.play("idle");
     }
@@ -144,22 +166,26 @@ export function syncPlayer(actor, p, time) {
     actor.alpha = blinking && Math.floor(time * 20) % 2 === 0 ? 0.45 : 1;
 }
 
-const BOSS_TIMED = { rise: BOSS.riseTime, recoil: BOSS.recoilTime, transition: BOSS.transitionTime, dead: 2.2 };
-
-export function syncBoss(actor, b) {
-    actor.position.x = b.x;
-    actor.position.y = b.y;
-    actor.flipX = b.facing < 0;
-    switch (b.state) {
+/** Shows any enemy (boss or mob) from its simulation state. */
+export function syncEnemy(actor, e) {
+    const def = e.def;
+    actor.position.x = e.x;
+    actor.position.y = e.y;
+    actor.flipX = e.facing < 0;
+    actor.visible = !(e.state === "dead" && e.stateTime > (def.deathTime ?? 1) + 0.1);
+    switch (e.state) {
         case "dormant": actor.play("dormant"); return;
-        case "rise": actor.progress("rise", b.stateTime / BOSS_TIMED.rise); return;
-        case "recoil": actor.progress("recoil", b.stateTime / BOSS_TIMED.recoil); return;
+        case "idle": actor.play("idle"); return;
+        case "rise": actor.progress("rise", e.stateTime / def.riseTime); return;
+        case "recoil": actor.progress("recoil", e.stateTime / def.recoilTime); return;
+        case "flinch": actor.progress("flinch", e.stateTime / def.flinchTime); return;
+        case "guardBroken": actor.play("guardBroken"); return;
         case "staggered": actor.play("staggered"); return;
-        case "transition": actor.progress("transition", b.stateTime / BOSS_TIMED.transition); return;
+        case "transition": actor.progress("transition", e.stateTime / def.phase2.transitionTime); return;
         case "grabHold": actor.play("grabHold"); return;
-        case "dead": actor.progress("death", b.stateTime / BOSS_TIMED.dead); return;
+        case "dead": actor.progress("death", e.stateTime / (def.deathTime ?? 1)); return;
         case "action": {
-            const a = b.action;
+            const a = e.action;
             const stage = a.def.stages[a.stageIndex];
             const [name, seg] = stage.anim;
             const t = a.stageDur > 0 ? a.stageTime / a.stageDur : 1;
@@ -196,7 +222,7 @@ export class PropActor extends Entity {
 
     render(ctx) {
         const f = this.getFrame();
-        if (!f || this.alpha <= 0) return;
+        if (!f || this.alpha <= 0 || this.visible === false) return;
         ctx.save();
         ctx.translate(Math.round(this.position.x), Math.round(this.position.y));
         if (this.flipX) ctx.scale(-1, 1);

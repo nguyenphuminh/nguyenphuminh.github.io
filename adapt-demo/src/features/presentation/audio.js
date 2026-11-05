@@ -1,6 +1,7 @@
-// Synthesized audio: every sound effect is computed sample by sample; the music loops are rendered
-// in the background with an OfflineAudioContext. Wrapped in Kippy Sounds on the "sfx"/"music" buses.
+// Synthesized audio: every sound effect is computed sample by sample; the composed music (music.js) renders
+// lazily with an OfflineAudioContext. Wrapped in Kippy Sounds on the "sfx"/"music" buses.
 import { Sound } from "kippy";
+import { BOSS_TRACKS, MUSIC_TRACKS, renderTrack } from "./music.js";
 
 // ---------------------------------------------------------------- DSP helpers
 
@@ -197,141 +198,48 @@ function recipes(d) {
         uiMove: [() => d.tone(0.045, 880, 880, "square", 0.25, 3500), 0.25],
         uiSelect: [() => d.mix(d.tone(0.06, 660, 660, "square", 0.25, 3500), d.delay(d.tone(0.09, 990, 990, "square", 0.25, 3500), 0.06)), 0.3],
         uiBack: [() => d.mix(d.tone(0.06, 660, 660, "square", 0.25, 3500), d.delay(d.tone(0.09, 440, 440, "square", 0.25, 3500), 0.06)), 0.3],
+        // Stage 1: mobs, the Pale Squire, story
+        shardlingLeap: [() => d.mix(d.whoosh(0.18, 1200, 3600, 0.5, 0.5), d.ping(0.16, [3200, 4800], 0.25, 0.3)), 0.4],
+        glassBreak: [() => d.shatter(0.35, 0.55, 31), 0.45],
+        spearThrust: [() => d.mix(d.whoosh(0.2, 600, 2800, 0.7, 0.4), d.tone(0.12, 400, 1200, "sine", 0.15)), 0.5],
+        shieldBash: [() => d.mix(d.thud(0.25, 110, 50, 0.9), d.burst(0.1, 1500, 0.6), d.ping(0.3, [900, 1340], 0.35, 0.3)), 0.6],
+        shieldBlock: [() => d.mix(d.ping(0.5, [1600, 2380, 3550], 0.8, 0.3, 0.003), d.burst(0.04, 5000, 0.6)), 0.55],
+        guardBreak: [() => d.echo(d.mix(d.shatter(0.6, 0.6, 41), d.thud(0.4, 120, 40, 0.8)), 2, 0.12, 0.35), 0.7],
+        bossRoll: [() => d.mix(d.whoosh(0.3, 200, 700, 0.7, 0.9), d.thud(0.12, 100, 60, 0.3)), 0.5],
+        tablet: [() => d.mix(d.rumble(0.7, 260, 0.6), d.burst(0.5, 700, 0.25, 0.5), d.delay(d.ping(0.9, [587.33, 880], 0.18, 0.4), 0.35)), 0.45],
+        dialogueTick: [() => d.tone(0.025, 1500, 1400, "sine", 0.2), 0.08],
+        mirrorWhisper: [() => d.echo(d.mix(d.whoosh(1.5, 500, 900, 0.5, 0.25), d.delay(d.whoosh(1.3, 1400, 2400, 0.35, 0.2), 0.12), d.tone(1.5, 110, 104, "sine", 0.12), d.cascade(1.2, 0.07, 12)), 2, 0.2, 0.35), 0.5],
+        gate: [() => d.echo(d.mix(d.thud(1.0, 70, 28, 0.9), d.rumble(1.2, 200, 0.7), d.burst(0.2, 600, 0.3)), 3, 0.25, 0.4), 0.7],
+        // Stages 2–3: the Mirror Archer, the Reflection, the ending
+        archerThrow: [() => d.mix(d.whoosh(0.18, 1400, 4200, 0.55, 0.4), d.tone(0.16, 2400, 1100, "sine", 0.2)), 0.45],
+        deflected: [() => d.mix(d.ping(0.6, [1900, 2850, 4300], 0.9, 0.3, 0.005), d.burst(0.03, 7000, 0.8), d.delay(d.whoosh(0.22, 2500, 600, 0.45, 0.5), 0.02)), 0.7],
+        riposte: [() => d.mix(d.whoosh(0.14, 1200, 5000, 0.85, 0.4), d.tone(0.1, 900, 2600, "sine", 0.18), d.delay(d.ping(0.25, [3100, 4650], 0.3, 0.3), 0.08)), 0.6],
+        drink: [() => d.mix(d.tone(0.12, 320, 260, "sine", 0.5, 900), d.delay(d.tone(0.12, 300, 240, "sine", 0.45, 900), 0.22), d.delay(d.tone(0.14, 290, 220, "sine", 0.4, 900), 0.44), d.delay(d.ping(0.7, [1174.66, 1760], 0.25, 0.35), 0.7)), 0.5],
+        vanish: [() => d.mix(d.shatter(0.45, 0.6, 51), d.whoosh(0.35, 3200, 700, 0.45, 0.5)), 0.6],
+        appear: [() => d.mix(d.whoosh(0.4, 600, 3600, 0.5, 0.4), d.delay(d.ping(0.5, [2093, 3136], 0.45, 0.3), 0.28)), 0.6],
+        volley: [() => d.mix(d.tone(0.2, 2800, 900, "sine", 0.3), d.delay(d.tone(0.2, 2600, 800, "sine", 0.3), 0.12), d.delay(d.tone(0.2, 3000, 1000, "sine", 0.3), 0.24), d.whoosh(0.45, 1500, 4000, 0.35, 0.4)), 0.55],
+        mirrorCrack: [() => d.echo(d.mix(d.shatter(1.4, 0.8, 61), d.thud(1.2, 70, 25, 0.9), d.rumble(1.8, 300, 0.6), d.delay(d.cascade(1.4, 0.4, 13), 0.3)), 3, 0.22, 0.4), 1],
+        dawn: [() => d.echo(d.mix(d.arp([587.33, 739.99, 880, 1174.66, 1479.98], 0.32, 1.9, 0.45), d.tone(3, 293.66, 293.66, "sine", 0.18, 1200), d.tone(3, 440, 440, "sine", 0.12, 1200)), 3, 0.24, 0.4), 0.55],
+        heartbeat: [() => d.mix(d.thud(0.3, 75, 32, 1), d.delay(d.thud(0.26, 70, 30, 0.7), 0.28), d.delay(d.rumble(0.3, 120, 0.25), 0.02)), 0.75],
     };
-}
-
-// ---------------------------------------------------------------- music (OfflineAudioContext)
-
-const LOOP = 24; // seconds; all continuous oscillators use frequencies with whole cycles per loop
-const q = (f) => Math.round(f * LOOP) / LOOP;
-const midi = (n) => 440 * 2 ** ((n - 69) / 12);
-
-async function renderLoop(sampleRate, build) {
-    const OAC = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext;
-    const TAIL = 4;
-    const oc = new OAC(2, Math.ceil((LOOP + TAIL) * sampleRate), sampleRate);
-    build(oc);
-    const rendered = await oc.startRendering();
-    // Fold the tail back onto the start so the loop is seamless.
-    const n = Math.round(LOOP * sampleRate), tail = rendered.length - n;
-    const out = new AudioBuffer({ numberOfChannels: 2, length: n, sampleRate });
-    for (let c = 0; c < 2; c++) {
-        const src = rendered.getChannelData(c), dst = out.getChannelData(c);
-        dst.set(src.subarray(0, n));
-        for (let i = 0; i < tail; i++) dst[i] += src[n + i];
-    }
-    return out;
-}
-
-function reverbIR(oc, seconds = 3.2) {
-    const r = mulberry32(99), len = Math.floor(seconds * oc.sampleRate);
-    const ir = oc.createBuffer(2, len, oc.sampleRate);
-    for (let c = 0; c < 2; c++) {
-        const d = ir.getChannelData(c);
-        for (let i = 0; i < len; i++) d[i] = (r() * 2 - 1) * Math.pow(1 - i / len, 2.6);
-    }
-    return ir;
-}
-
-function ambientBuild(oc) {
-    const master = oc.createGain();
-    master.gain.value = 0.8;
-    master.connect(oc.destination);
-    const verb = oc.createConvolver();
-    verb.buffer = reverbIR(oc);
-    const wet = oc.createGain();
-    wet.gain.value = 0.55;
-    verb.connect(wet).connect(master);
-
-    // Drone: detuned saws through a slowly breathing lowpass
-    const droneLP = oc.createBiquadFilter();
-    droneLP.type = "lowpass"; droneLP.frequency.value = 320; droneLP.Q.value = 2;
-    const lfo = oc.createOscillator(); lfo.frequency.value = q(1 / 8);
-    const lfoAmt = oc.createGain(); lfoAmt.gain.value = 180;
-    lfo.connect(lfoAmt).connect(droneLP.frequency);
-    const droneGain = oc.createGain(); droneGain.gain.value = 0.09;
-    droneLP.connect(droneGain);
-    droneGain.connect(master); droneGain.connect(verb);
-    for (const [f, pan] of [[midi(38), -0.4], [midi(38) * 1.004, 0.4], [midi(45), 0], [midi(26), 0]]) {
-        const o = oc.createOscillator(); o.type = f < 50 ? "sine" : "sawtooth"; o.frequency.value = q(f);
-        const p = oc.createStereoPanner(); p.pan.value = pan;
-        o.connect(p).connect(droneLP);
-        o.start(0);
-    }
-    lfo.start(0);
-
-    // Pads: i - VI - iv - V in D minor, 6 s each
-    const chords = [[50, 53, 57], [46, 50, 53], [43, 46, 50], [45, 49, 52]];
-    chords.forEach((ch, k) => {
-        const t0 = k * 6;
-        for (const n of ch) {
-            const o = oc.createOscillator(); o.type = "triangle"; o.frequency.value = midi(n);
-            const g = oc.createGain();
-            g.gain.setValueAtTime(0, t0);
-            g.gain.linearRampToValueAtTime(0.045, t0 + 2);
-            g.gain.setValueAtTime(0.045, t0 + 5);
-            g.gain.linearRampToValueAtTime(0, t0 + 7.5);
-            o.connect(g); g.connect(verb); g.connect(master);
-            o.start(t0); o.stop(t0 + 7.6);
-        }
-    });
-
-    // Sparse glass bells on a D minor pentatonic
-    const r = mulberry32(42), scaleNotes = [74, 77, 79, 81, 84, 86, 89];
-    for (let t = 0.8; t < LOOP; t += 1.4 + r() * 1.8) {
-        const f = midi(scaleNotes[Math.floor(r() * scaleNotes.length)]);
-        for (const [mul, amp] of [[1, 0.05], [2.76, 0.015]]) {
-            const o = oc.createOscillator(); o.frequency.value = f * mul;
-            const g = oc.createGain();
-            g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amp, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.5);
-            const p = oc.createStereoPanner(); p.pan.value = r() * 1.2 - 0.6;
-            o.connect(g).connect(p); p.connect(verb); p.connect(master);
-            o.start(t); o.stop(t + 2.6);
-        }
-    }
-}
-
-function intensityBuild(oc) {
-    const master = oc.createGain(); master.gain.value = 0.9; master.connect(oc.destination);
-    const verb = oc.createConvolver(); verb.buffer = reverbIR(oc, 1.6);
-    const wet = oc.createGain(); wet.gain.value = 0.3; verb.connect(wet).connect(master);
-    const beat = 60 / 100; // 100 BPM → 40 beats per loop
-
-    for (let b = 0; b < 40; b++) {
-        const t = b * beat;
-        // Heartbeat drum: strong on 1 and 3, softer double on 4
-        const strong = b % 4 === 0 || b % 4 === 2;
-        for (const [off, amp] of strong ? [[0, 0.75]] : b % 4 === 3 ? [[0, 0.3], [beat / 2, 0.22]] : []) {
-            const o = oc.createOscillator(); o.frequency.setValueAtTime(120, t + off); o.frequency.exponentialRampToValueAtTime(42, t + off + 0.22);
-            const g = oc.createGain(); g.gain.setValueAtTime(amp, t + off); g.gain.exponentialRampToValueAtTime(0.001, t + off + 0.4);
-            o.connect(g); g.connect(master); g.connect(verb);
-            o.start(t + off); o.stop(t + off + 0.42);
-        }
-        // Tense ostinato: D3 / Eb3 eighths through a lowpass
-        for (let e = 0; e < 2; e++) {
-            const te = t + e * beat / 2;
-            const o = oc.createOscillator(); o.type = "sawtooth"; o.frequency.value = midi(((b * 2 + e) % 8) < 6 ? 50 : 51);
-            const f = oc.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 900 + (b % 8) * 90;
-            const g = oc.createGain(); g.gain.setValueAtTime(0.0001, te); g.gain.linearRampToValueAtTime(0.05, te + 0.01); g.gain.exponentialRampToValueAtTime(0.0005, te + beat / 2);
-            o.connect(f).connect(g); g.connect(master); g.connect(verb);
-            o.start(te); o.stop(te + beat / 2 + 0.02);
-        }
-        // Metallic tick on off-beats
-        const tick = oc.createOscillator(); tick.type = "square"; tick.frequency.value = 6100;
-        const tg = oc.createGain(); const tt = t + beat / 2;
-        tg.gain.setValueAtTime(0.012, tt); tg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.05);
-        tick.connect(tg).connect(master);
-        tick.start(tt); tick.stop(tt + 0.06);
-    }
 }
 
 // ---------------------------------------------------------------- public API
 
+const silentMusic = {
+    play() {}, setPhase() {}, stop() {}, current: null,
+    start() {}, setTrack() {}, setIntensity() {}, fadeOut() {},
+};
 const silent = {
     play() { return null; },
-    music: { start() {}, setIntensity() {}, stop() {}, fadeOut() {} },
+    music: silentMusic,
     ready: Promise.resolve(),
+    musicStats: {},
 };
+
+// The track most likely to be needed after each one; rendered in the background ahead of time.
+const NEXT = { title: "outer", outer: "squire", squire: "hall", hall: "mirrorwright", mirrorwright: "heart", heart: "reflection", reflection: "ending" };
+const MUSIC_VOLUME = 0.7;
 
 export function createAudio(kippyAudio) {
     let ctx;
@@ -355,50 +263,110 @@ export function createAudio(kippyAudio) {
         }
     }
 
-    // Music renders in the background; start() before it is ready starts it when ready.
-    let base = null, layer = null, wantPlaying = false, intensity = 0, baseInst = null, layerInst = null;
-    const ready = (async () => {
-        try {
-            const [a, b] = await Promise.all([renderLoop(SR, ambientBuild), renderLoop(SR, intensityBuild)]);
-            base = new Sound({ src: a, bus: "music", volume: 0.55, loop: true, maxInstances: 1 });
-            layer = new Sound({ src: b, bus: "music", volume: 0.5, loop: true, maxInstances: 1 });
-            if (wantPlaying) startNow(2);
-        } catch (e) {
-            console.warn("Music unavailable", e);
-        }
-    })();
+    // ---- music: tracks render one at a time, lazily; play() before a track is ready plays it when ready ----
+    const loaded = {}; // name -> { base: Sound, layer: Sound | null }
+    const pending = {}; // name -> Promise
+    const musicStats = {}; // name -> { renderMs, seconds, bpm, rms, peak, layerRms }
+    let queue = Promise.resolve();
+    let current = null; // the track asked for (playing, or waiting to render)
+    let phase = 1;
+    let live = null; // { name, base: SoundInstance, layer: SoundInstance | null }
 
-    function startNow(fadeIn) {
-        if (!base || baseInst) return;
-        baseInst = base.play({ fadeIn });
-        layerInst = layer.play({ volume: 0.0001 });
-        if (intensity > 0) layerInst?.fadeTo(layer.volume * intensity, 2);
+    function ensure(name) {
+        if (loaded[name]) return Promise.resolve(loaded[name]);
+        pending[name] ??= (queue = queue.then(async () => {
+            const t0 = performance.now();
+            const r = await renderTrack(SR, name);
+            loaded[name] = {
+                base: new Sound({ src: r.base.buffer, bus: "music", volume: MUSIC_VOLUME, loop: true, maxInstances: 2 }),
+                layer: r.layer ? new Sound({ src: r.layer.buffer, bus: "music", volume: MUSIC_VOLUME, loop: true, maxInstances: 2 }) : null,
+            };
+            musicStats[name] = {
+                renderMs: Math.round(performance.now() - t0), seconds: +r.base.seconds.toFixed(1), bpm: r.bpm, bars: r.bars,
+                rms: +r.base.rms.toFixed(3), peak: +r.base.peak.toFixed(3), layerRms: r.layer ? +r.layer.rms.toFixed(3) : null,
+                quietestSecondRms: +r.base.quietest.toFixed(3), seamJump: +r.base.seamJump.toFixed(4), typicalDelta: +r.base.typicalDelta.toFixed(4),
+            };
+            return loaded[name];
+        }).catch((e) => {
+            console.warn(`Music track "${name}" unavailable`, e);
+            delete pending[name];
+            return null;
+        }));
+        return pending[name];
     }
+
+    function prefetch(name) {
+        const next = NEXT[name];
+        if (next && !loaded[next] && !pending[next]) ensure(next);
+    }
+
+    function fadeOutLive(fade) {
+        if (!live) return;
+        live.base.fadeOut(fade);
+        live.layer?.fadeOut(fade);
+        live = null;
+    }
+
+    function startLive(name, fade) {
+        const track = loaded[name];
+        if (!track || current !== name) return;
+        fadeOutLive(fade);
+        const base = track.base.play({ fadeIn: fade });
+        const layer = track.layer ? track.layer.play({ volume: 0 }) : null; // in sync with the base, silent until phase 2
+        live = { name, base, layer };
+        if (phase === 2 && layer) layer.fadeTo(MUSIC_VOLUME, fade);
+    }
+
+    const music = {
+        /** Crossfades to `name`; idempotent while it is already playing; plays when ready if still rendering. */
+        play(name, { fade = 2 } = {}) {
+            if (!MUSIC_TRACKS.includes(name)) return;
+            if (current === name && (live?.name === name || pending[name])) return;
+            current = name;
+            phase = 1;
+            ensure(name).then(() => {
+                startLive(name, fade);
+                prefetch(name);
+            });
+        },
+        /** 1 or 2: the second-phase intensification of the current boss track (no-op otherwise). */
+        setPhase(n) {
+            const next = n >= 2 ? 2 : 1;
+            if (!BOSS_TRACKS.includes(current) || next === phase) return;
+            phase = next;
+            live?.layer?.fadeTo(next === 2 ? MUSIC_VOLUME : 0, 2);
+        },
+        /** Fades everything out; a later play() works normally. */
+        stop({ fade = 1.5 } = {}) {
+            current = null;
+            phase = 1;
+            fadeOutLive(fade);
+        },
+        get current() {
+            return current;
+        },
+        // Compatibility shims for older callers.
+        start() {
+            music.play(current ?? "title");
+        },
+        setTrack(name) {
+            music.play(name);
+        },
+        setIntensity(level) {
+            if (BOSS_TRACKS.includes(current)) music.setPhase(level >= 1 ? 2 : 1);
+        },
+        fadeOut(seconds = 1.5) {
+            music.stop({ fade: seconds });
+        },
+    };
+    const ready = ensure("title").then(() => undefined);
 
     return {
         ready,
+        musicStats,
         play(name, { volume = 1, pitch = 1 } = {}) {
             return sounds[name]?.play({ volume, pitch }) ?? null;
         },
-        music: {
-            start() {
-                wantPlaying = true;
-                startNow(2.5);
-            },
-            setIntensity(level) {
-                intensity = Math.max(0, Math.min(1, level));
-                layerInst?.fadeTo(Math.max(0.0001, layer.volume * intensity), 2.5);
-            },
-            stop() {
-                wantPlaying = false;
-                baseInst?.stop(); layerInst?.stop();
-                baseInst = layerInst = null;
-            },
-            fadeOut(seconds = 1.5) {
-                wantPlaying = false;
-                baseInst?.fadeOut(seconds); layerInst?.fadeOut(seconds);
-                baseInst = layerInst = null;
-            },
-        },
+        music,
     };
 }

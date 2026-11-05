@@ -1,4 +1,4 @@
-// The Mirrorwright's moves (BRD 2.2.3.1) as data.
+// The Mirrorwright, the second boss (BRD 2.2.3), as data. Values match the trained model; change them only with retraining.
 // A move is a list of stages. Stage fields:
 //   part       windup | hold | active | recovery | move | air
 //   dur        seconds, or (rng) => seconds
@@ -12,7 +12,7 @@
 const CUT_HIT = { x0: 4, x1: 60, y0: 8, y1: 52 }; // reaches match the drawn blade (presentation reports 61–65 px)
 const LUNGE_HIT = { x0: 0, x1: 62, y0: 8, y1: 44 };
 
-export const MOVES = {
+const MOVES = {
     quickCut: {
         label: "Quick Cut", kind: "attack", phase: 1,
         stages: [
@@ -122,15 +122,35 @@ export const MOVES = {
 };
 
 // Fixed action order: the policy network's outputs map to this list.
-export const ACTIONS = [
+const ACTIONS = [
     "quickCut", "hesitationCut", "piercingLunge", "shatterSlam", "lowSweep", "glassLeap", "mirrorShard",
     "grasp", "feint", "echoCombo", "shardRain", "advance", "retreat", "hold",
 ];
 
-export const isActionAllowed = (id, phase) => MOVES[id] !== undefined && MOVES[id].phase <= phase;
-
-export const HAZARDS = {
+const HAZARDS = {
     shockwave: { speed: 175, life: 1.5, halfWidth: 8, height: 12, damage: 13, offset: 20 },
     shard: { speed: 250, life: 2.5, halfWidth: 5, height: 6, lift: 24, damage: 12, offset: 20 },
     rain: { count: 6, warn: 0.6, stagger: 0.18, active: 0.08, radius: 14, damage: 14 },
+};
+
+export const MIRRORWRIGHT = {
+    id: "mirrorwright",
+    name: "The Mirrorwright",
+    kind: "boss",
+    halfWidth: 14,
+    height: 64,
+    maxHp: 420,
+    solid: true,
+    phases: 2,
+    phase2: { recoveryScale: 0.75, moveScale: 1.2, transitionTime: 1.8 },
+    stagger: { max: 100, drainDelay: 1.5, drain: 8, parry: 45, deflect: 20, staggeredTime: 2.0, afterCritical: 0.4 },
+    critical: { light: 40, heavy: 60 },
+    recoilTime: 0.8,
+    riseTime: 1.6,
+    deathTime: 2.2,
+    grab: { holdTime: 1.0, damage: 28, throwSpeed: 200, handX: 18, handY: 14 },
+    minTelegraph: 0.3,
+    moves: MOVES,
+    actions: ACTIONS,
+    hazards: HAZARDS,
 };

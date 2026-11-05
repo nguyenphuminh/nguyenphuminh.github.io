@@ -5,8 +5,9 @@ export const REWARD = { perDamage: 1 / 100, parried: 0.15, perSecond: 0.02, win:
 export function stepReward(events, dt) {
     let r = -REWARD.perSecond * dt; // gentle push to engage instead of stalling
     for (const e of events) {
+        if (!e.isBoss) continue; // only the boss's own exchanges with the knight
         if (e.type === "playerHit") r += e.damage * REWARD.perDamage;
-        else if (e.type === "bossHit") r -= e.damage * REWARD.perDamage;
+        else if (e.type === "enemyHit") r -= e.damage * REWARD.perDamage;
         else if (e.type === "parry") r -= REWARD.parried;
     }
     return r;

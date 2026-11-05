@@ -1,14 +1,14 @@
 // Pretrained policy (BRD 2.2.4.2): a small Catniff network scoring every boss move.
 // In Node "catniff" resolves to the npm package; in the browser the import map points at vendor/catniff.js.
 import catniff from "catniff";
-import { ACTIONS } from "../combat/index.js";
 import { FEATURE_SIZE } from "./features.js";
 
 const { Tensor, nn } = catniff;
-export const POLICY_SHAPE = { inputs: FEATURE_SIZE, hidden: [64, 64], outputs: ACTIONS.length };
+/** Network shape for a boss: 32 inputs, two hidden layers, one score per move of that boss. */
+export const policyShape = (bossDef) => ({ inputs: FEATURE_SIZE, hidden: [64, 64], outputs: bossDef.actions.length });
 
 export class PolicyNet {
-    constructor(shape = POLICY_SHAPE) {
+    constructor(shape) {
         this.l1 = new nn.Linear(shape.inputs, shape.hidden[0]);
         this.l2 = new nn.Linear(shape.hidden[0], shape.hidden[1]);
         this.l3 = new nn.Linear(shape.hidden[1], shape.outputs);
@@ -30,10 +30,11 @@ export function scoreWith(net, features) {
     }
 }
 
-/** Builds a policy from a shipped model file. Throws if the file does not match this game build. */
-export function loadPolicy(model) {
-    const ok = model && model.shape && model.shape.inputs === POLICY_SHAPE.inputs && model.shape.outputs === POLICY_SHAPE.outputs
-        && Array.isArray(model.actions) && model.actions.join() === ACTIONS.join() && model.stateDict;
+/** Builds a boss's policy from its shipped model file. Throws if the file does not match this game build. */
+export function loadPolicy(model, bossDef) {
+    const shape = policyShape(bossDef);
+    const ok = model && model.boss === bossDef.id && model.shape && model.shape.inputs === shape.inputs && model.shape.outputs === shape.outputs
+        && Array.isArray(model.actions) && model.actions.join() === bossDef.actions.join() && model.stateDict;
     if (!ok) throw new Error("Boss model does not match this game build");
     const net = new PolicyNet(model.shape);
     nn.state.loadStateDict(net, model.stateDict);

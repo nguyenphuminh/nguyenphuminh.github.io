@@ -30,29 +30,10 @@ export const PLAYER = {
     heavy: { windup: 0.38, active: 0.1, recovery: 0.42, damage: 28, stamina: 28, reach: 36, stagger: 30, lunge: 60 },
     parry: { window: [0.02, 0.19], duration: 0.42, stamina: 10 },
     hurt: { stun: 0.32, invuln: 0.6, knockback: 110 },
+    deflected: { stun: 0.25, knockback: 60 }, // recoil when an enemy's parry stance turns the knight's attack aside
     bufferTime: 0.15,
 };
 
-export const BOSS = {
-    name: "The Mirrorwright",
-    halfWidth: 14,
-    height: 64,
-    maxHp: 420,
-    maxStagger: 100,
-    staggerDrainDelay: 1.5,
-    staggerDrain: 8,
-    parryStagger: 45,
-    deflectStagger: 20,
-    recoilTime: 0.8,
-    staggeredTime: 2.0,
-    staggerAfterCritical: 0.4,
-    transitionTime: 1.8,
-    riseTime: 1.6,
-    criticalDamage: { light: 40, heavy: 60 },
-    phase2RecoveryScale: 0.75,
-    phase2MoveScale: 1.2,
-    grab: { holdTime: 1.0, damage: 28, throwSpeed: 200 },
-};
 
-// Minimum visible wind-up before any boss damage (BRD 2.2.3.4).
+// Minimum visible wind-up before any enemy damage (BRD 2.2.3.4, 2.2.11); a definition may demand more.
 export const MIN_TELEGRAPH = 0.3;

@@ -3,10 +3,10 @@ import { C, HEX, R } from "./palette.js";
 import { Px, capsule, ellipse, fill, framesToSheet, hash2, line, outline, paint, poly, pxToCanvas, rect, rgba } from "./pixel.js";
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-const dither = (x, y, t) => t * 16 > BAYER[(y & 3) * 4 + (x & 3)] + 0.5;
+export const dither = (x, y, t) => t * 16 > BAYER[(y & 3) * 4 + (x & 3)] + 0.5;
 
 // Vertical banded gradient with ordered dithering between bands.
-function gradient(px, x0, y0, w, h, stops) {
+export function gradient(px, x0, y0, w, h, stops) {
     const bands = stops.length - 1;
     for (let y = y0; y < y0 + h; y++) {
         const t = ((y - y0) / Math.max(1, h - 1)) * bands;
@@ -109,7 +109,7 @@ function sky() {
 }
 
 // Horizontally periodic height field (integer harmonics over the strip width).
-function periodic(x, W, seed, terms) {
+export function periodic(x, W, seed, terms) {
     let h = 0;
     for (const [k, a] of terms) h += a * Math.sin((2 * Math.PI * k * x) / W + hash2(k, seed) * 6.28);
     return h;
@@ -187,7 +187,8 @@ function midStrip() {
     return pxToCanvas(px);
 }
 
-function arenaBackdrop() {
+// The arena back wall as pixels (the Hall of Panes' opened version is derived from it).
+export function arenaBackdropPx() {
     const px = new Px(480, 270);
     // Back wall of stone blocks
     for (let y = 0; y < 270; y++) {
@@ -236,7 +237,11 @@ function arenaBackdrop() {
     }
     // Floor-level shadow
     for (let y = 196; y < 270; y++) for (let x = 0; x < 480; x++) if (px.get(x, y) && dither(x, y, (y - 196) / 40)) px.set(x, y, rgba("#0c0c18"));
-    return pxToCanvas(px);
+    return px;
+}
+
+function arenaBackdrop() {
+    return pxToCanvas(arenaBackdropPx());
 }
 
 // ---------------------------------------------------------------- props
@@ -457,15 +462,183 @@ function rubble() {
     return { sprite: pxToCanvas(px) };
 }
 
+// ---------------------------------------------------------------- stage 1 additions
+
+// The Keep's open entrance: stone arch with raised portcullis, doors folded open, dark passage inside.
+function keepGate() {
+    const px = new Px(80, 140);
+    const W = 80, H = 140, inX0 = 18, inX1 = 62, archTop = 30;
+    const inside = (x, y) => x >= inX0 && x < inX1 && (y > archTop + 22 || Math.hypot(x + 0.5 - 40, (y - (archTop + 22)) * 1.0) < 22);
+    // Masonry
+    for (let y = 8; y < H; y++) for (let x = 2; x < W - 2; x++) {
+        if (inside(x, y)) continue;
+        const row = Math.floor(y / 8), off = row % 2 ? 6 : 0;
+        const mortar = y % 8 === 0 || (x + off) % 12 === 0;
+        const sh = hash2(Math.floor((x + off) / 12), row, 21);
+        px.set(x, y, rgba(mortar ? "#1e2032" : sh < 0.35 ? "#474b66" : sh < 0.75 ? "#3d4158" : "#525773"));
+    }
+    // Battlements
+    for (let k = 0; k < 6; k++) fill(px, rect(2 + k * 13, 0, 9, 9), rgba(k % 2 ? "#474b66" : "#3d4158"));
+    // Dark passage with depth
+    gradient(px, inX0, archTop, inX1 - inX0, H - archTop, ["#0b0b14", "#0e0f1c", "#090911"]);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!inside(x, y) && px.get(x, y) === rgba("#0b0b14")) px.set(x, y, 0);
+    for (let y = archTop; y < H; y++) for (let x = inX0; x < inX1; x++) {
+        if (!inside(x, y)) { if (px.get(x, y) && (inside(x + 1, y) || inside(x - 1, y) || inside(x, y + 1))) px.set(x, y, rgba("#6a6f8c")); continue; }
+    }
+    // Raised portcullis teeth at the top of the passage
+    for (let x = inX0 + 3; x < inX1 - 2; x += 5) {
+        for (let y = archTop + 4; y < archTop + 18; y++) if (inside(x, y)) px.set(x, y, rgba("#2b2e48"));
+        px.set(x, archTop + 18, rgba("#5a5e78"));
+    }
+    for (let x = inX0; x < inX1; x++) if (inside(x, archTop + 12)) px.set(x, archTop + 12, rgba("#2b2e48"));
+    // Doors folded open against the jambs
+    for (const [x0, x1] of [[inX0, inX0 + 6], [inX1 - 6, inX1]]) {
+        fill(px, rect(x0, 58, x1 - x0, H - 58), rgba("#3a2a20"));
+        for (let y = 58; y < H; y += 9) line(px, x0, y, x1 - 1, y, rgba("#241912"));
+        line(px, x0, 58, x0, H - 1, rgba("#5a4232"));
+        for (const y of [70, 110]) { px.set(x0 + 2, y, rgba("#9196b0")); px.set(x0 + 3, y, rgba("#9196b0")); }
+    }
+    // Keystone with a mirror emblem
+    fill(px, poly([[34, 24], [46, 24], [44, 33], [36, 33]]), rgba("#6a6f8c"));
+    fill(px, ellipse(40, 28.5, 2.6, 3), rgba("#9fdcef"));
+    px.set(39, 27, C.cyan3); px.set(40, 28, C.cyan2);
+    // Moss and cracks
+    for (let i = 0; i < 70; i++) {
+        const x = 2 + Math.floor(hash2(i, 31) * 76), y = 8 + Math.floor(hash2(i, 32) * 130);
+        if (px.get(x, y) && !px.get(x, y - 1)) px.set(x, y, rgba("#4f6a4a"));
+    }
+    line(px, 8, 40, 12, 60, rgba("#1e2032")); line(px, 12, 60, 10, 75, rgba("#1e2032"));
+    line(px, 70, 90, 66, 104, rgba("#1e2032"));
+    outline(px, C.outline);
+    return { sprite: pxToCanvas(px) };
+}
+
+// A wooden practice post wrapped in straw, notched by sword strikes.
+function trainingPost() {
+    const px = new Px(20, 40);
+    paint(px, rect(8, 6, 4, 34), R.leather, { sep: C.sep });
+    paint(px, capsule(2, 12, 18, 12, 1.4, 1.4), R.leather, { sep: C.sep });
+    const straw = { hi: rgba("#c9b77a"), mid: rgba("#9a8a54"), lo: rgba("#6a5e38") };
+    paint(px, ellipse(10, 21, 5.4, 7.5), straw, { sep: C.sep });
+    for (let y = 15; y < 28; y += 3) line(px, 6, y, 14, y + 1, rgba("#5a4e30"));
+    for (const [x, y] of [[8, 18], [12, 23], [9, 26]]) { px.set(x, y, rgba("#3a3020")); px.set(x + 1, y + 1, rgba("#3a3020")); }
+    paint(px, poly([[4, 40], [7, 36], [13, 36], [16, 40]]), R.stoneDark);
+    outline(px, C.outline);
+    return { sprite: pxToCanvas(px) };
+}
+
+// An inscription stone with a faintly pulsing cyan rune.
+function tablet() {
+    const frames = [];
+    const runes = [[11, 9], [10, 10], [12, 10], [11, 11], [11, 12], [9, 13], [13, 13], [11, 14], [11, 15], [10, 17], [12, 17], [11, 18]];
+    for (let f = 0; f < 3; f++) {
+        const px = new Px(22, 30);
+        paint(px, poly([[2, 30], [3, 26], [19, 26], [20, 30]]), R.stoneDark);
+        paint(px, poly([[4, 26], [4, 7], [7, 3], [11, 2], [15, 3], [18, 7], [18, 26]]), R.stone, { sep: C.sep });
+        for (let i = 0; i < 14; i++) {
+            const x = 5 + Math.floor(hash2(i, 41) * 12), y = 6 + Math.floor(hash2(i, 42) * 19);
+            if (px.get(x, y)) px.set(x, y, rgba(hash2(i, 43) < 0.5 ? "#3d4158" : "#525773"));
+        }
+        for (let y = 21; y < 25; y++) line(px, 6, y, 16, y, rgba(y % 2 ? "#3d4158" : "#2f3248"));
+        outline(px, C.outline);
+        const glow = [C.cyan0, C.cyan1, C.cyan2][f];
+        for (const [x, y] of runes) px.set(x, y, glow);
+        if (f === 2) { px.set(11, 8, C.cyan3); px.set(11, 16, C.cyan3); }
+        frames.push(px);
+    }
+    return sheetProp([frames[0], frames[1], frames[2], frames[1]], 3);
+}
+
+// A tiny shard lying on the road with a travelling glint.
+function roadShard() {
+    const frames = [];
+    for (let f = 0; f < 4; f++) {
+        const px = new Px(10, 6);
+        fill(px, poly([[1, 5], [4, 2], [8, 1], [9, 4], [6, 5]]), rgba("#4f88a8"));
+        line(px, 2, 4, 7, 2, rgba("#9fdcef"));
+        const gx = [3, 5, 7, -1][f];
+        if (gx > 0) { px.set(gx, 3 - (gx > 5 ? 1 : 0), C.white); px.set(gx, 2 - (gx > 5 ? 1 : 0), C.cyan3); }
+        if (f === 3) px.set(8, 1, C.cyan3);
+        frames.push(px);
+    }
+    return sheetProp(frames, 4);
+}
+
+// Backdrop for the Pale Squire's arena: an open-air training courtyard of the Outer Ward.
+function yardBackdrop() {
+    const px = new Px(480, 270);
+    const wallRows = (x0, x1, yTop, seed) => {
+        for (let x = x0; x < x1; x++) {
+            const crumble = Math.floor(hash2(Math.floor(x / 3), seed, 51) * 10) + (hash2(Math.floor(x / 9), seed, 52) < 0.3 ? 12 : 0);
+            for (let y = yTop + crumble; y < 228; y++) {
+                const row = Math.floor(y / 9), off = row % 2 ? 7 : 0;
+                const mortar = y % 9 === 0 || (x + off) % 14 === 0;
+                const sh = hash2(Math.floor((x + off) / 14), row, seed);
+                px.set(x, y, rgba(mortar ? "#10111c" : sh < 0.3 ? "#22243a" : sh < 0.7 ? "#1d1f33" : "#262940"));
+            }
+        }
+    };
+    // Back courtyard wall, broken into sections at different heights (sky shows above)
+    wallRows(0, 140, 120, 3);
+    wallRows(140, 200, 150, 4);
+    wallRows(200, 300, 104, 5);
+    wallRows(300, 350, 160, 6);
+    wallRows(350, 480, 112, 7);
+    // An arched opening in the middle section (transparent → far layers show through)
+    for (let y = 120; y < 228; y++) for (let x = 224; x < 276; x++) {
+        const inArch = y > 150 ? Math.abs(x - 250) < 18 : Math.hypot(x - 250, y - 150) < 18;
+        if (inArch) px.set(x, y, 0);
+        else if ((y > 150 ? Math.abs(x - 250) < 20 : Math.hypot(x - 250, y - 150) < 20) && px.get(x, y)) px.set(x, y, rgba("#3a3e5c"));
+    }
+    // Wall coping highlights
+    for (let x = 0; x < 480; x++) {
+        for (let y = 90; y < 228; y++) if (px.get(x, y)) { px.set(x, y, rgba("#3a3e5c")); if (px.get(x, y + 1)) px.set(x, y + 1, rgba("#2c2f48")); break; }
+    }
+    // Weapon rack (left): a frame with spears and swords
+    fill(px, rect(56, 176, 46, 4), rgba("#4a3328"));
+    fill(px, rect(56, 206, 46, 4), rgba("#4a3328"));
+    fill(px, rect(56, 176, 3, 52), rgba("#3a281e"));
+    fill(px, rect(99, 176, 3, 52), rgba("#3a281e"));
+    for (let k = 0; k < 6; k++) {
+        const x = 62 + k * 7;
+        line(px, x, 160 - (k % 2) * 6, x, 226, rgba(k % 3 === 0 ? "#6a5a4a" : "#5a4a3a"));
+        if (k % 2) { fill(px, poly([[x - 1, 160], [x, 152], [x + 1, 160]]), rgba("#9196b0")); }
+        else { line(px, x, 166, x, 150, rgba("#a9b3cc")); line(px, x - 2, 166, x + 2, 166, rgba("#7a6a5a")); }
+    }
+    // Training dummies standing in the yard
+    const dummy = (cx) => {
+        fill(px, rect(cx - 1, 182, 3, 46), rgba("#3a281e"));
+        fill(px, rect(cx - 11, 190, 23, 3), rgba("#3a281e"));
+        fill(px, ellipse(cx + 0.5, 198, 7, 10), rgba("#6a5e38"));
+        for (let y = 190; y < 208; y += 3) line(px, cx - 5, y, cx + 6, y + 1, rgba("#4f4428"));
+        fill(px, ellipse(cx + 0.5, 183, 4.5, 4.5), rgba("#7a6c44"));
+        px.set(cx - 1, 182, rgba("#2a2418")); px.set(cx + 2, 182, rgba("#2a2418"));
+    };
+    dummy(150); dummy(372);
+    // A torn banner on a pole (right)
+    fill(px, rect(420, 132, 2, 96), rgba("#3a281e"));
+    fill(px, poly([[422, 136], [440, 136], [440, 170], [434, 164], [430, 172], [426, 162], [422, 168]]), rgba("#2c4280"));
+    for (let i = 0; i < 6; i++) px.set(426 + (i % 3) * 4, 145 + i * 3, rgba("#e0b050"));
+    // Ivy on the wall
+    for (let i = 0; i < 160; i++) {
+        const x = Math.floor(hash2(i, 61) * 480), y = 130 + Math.floor(hash2(i, 62) * 90);
+        if (px.get(x, y) && hash2(i, 63) < 0.7) { px.set(x, y, rgba("#2e4a30")); if (px.get(x, y + 1)) px.set(x, y + 1, rgba("#3e5e3a")); }
+    }
+    // Ground shadow
+    for (let y = 200; y < 228; y++) for (let x = 0; x < 480; x++) if (px.get(x, y) && dither(x, y, (y - 200) / 40)) px.set(x, y, rgba("#0c0c18"));
+    return pxToCanvas(px);
+}
+
 export function buildWorldArt() {
     return {
         tiles: { floor: floorTile(false), arenaFloor: floorTile(true) },
-        backgrounds: { sky: sky(), far: farStrip(), mid: midStrip(), arenaBackdrop: arenaBackdrop() },
+        backgrounds: { sky: sky(), far: farStrip(), mid: midStrip(), arenaBackdrop: arenaBackdrop(), yardBackdrop: yardBackdrop() },
         props: {
             shrine: shrine(), veil: veil(),
             shard: glassShard(), shockwave: shockwave(), fallingShard: fallingShard(), rainMarker: rainMarker(),
             arenaWall: wall(false), gate: wall(true),
             statue: statue(), brokenPillar: brokenPillar(), chains: chains(), banner: banner(), candles: candles(), rubble: rubble(),
+            keepGate: keepGate(), trainingPost: trainingPost(), tablet: tablet(), roadShard: roadShard(),
         },
     };
 }

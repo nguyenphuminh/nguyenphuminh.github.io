@@ -1,20 +1,21 @@
-// Boss hazards: Shatter Slam shockwaves, the Mirror Shard projectile and Shard Rain.
-import { HAZARDS as H } from "./moves.js";
-import { BOSS as B } from "./constants.js";
-
-export function spawnHazard(sim, kind) {
-    const b = sim.boss;
+// Enemy hazards: ground shockwaves, thrown shards and Shard Rain. Parameters come from the owner's definition.
+export function spawnHazard(sim, owner, spawn) {
+    const H = owner.def.hazards;
+    const kind = typeof spawn === "string" ? spawn : spawn.kind;
     const floor = sim.bounds.floorY;
-    const moveId = b.action.id;
+    const moveId = owner.action.id;
+    const base = { ownerUid: owner.uid, isBoss: owner.isBoss, moveId, t: 0, hitDone: false };
 
     if (kind === "shockwaves") {
         for (const dir of [-1, 1]) {
-            sim.hazards.push({ id: sim.nextId++, kind: "shockwave", moveId, x: b.x + dir * H.shockwave.offset, y: floor, dir, t: 0, hitDone: false });
+            sim.hazards.push({ ...base, id: sim.nextId++, kind: "shockwave", x: owner.x + dir * H.shockwave.offset, y: floor, dir });
         }
-        sim.events.push({ type: "shockwave", x: b.x });
+        sim.events.push({ type: "shockwave", uid: owner.uid, x: owner.x });
     } else if (kind === "shard") {
-        sim.hazards.push({ id: sim.nextId++, kind: "shard", moveId, x: b.x + b.facing * H.shard.offset, y: floor - H.shard.lift, dir: b.facing, t: 0, hitDone: false });
-        sim.events.push({ type: "shardThrow" });
+        const lift = spawn.lift ?? H.shard.lift;
+        const parryable = spawn.parryable ?? true;
+        sim.hazards.push({ ...base, id: sim.nextId++, kind: "shard", x: owner.x + owner.facing * H.shard.offset, y: floor - lift, dir: owner.facing, parryable });
+        sim.events.push({ type: "shardThrow", uid: owner.uid });
     } else if (kind === "rain") {
         const { minX, maxX } = sim.bounds;
         const spots = [sim.player.x];
@@ -24,9 +25,9 @@ export function spawnHazard(sim, kind) {
             if (spots.every((s) => Math.abs(s - x) > 30)) spots.push(x);
         }
         spots.forEach((x, i) => {
-            sim.hazards.push({ id: sim.nextId++, kind: "rain", moveId, x, y: floor, t: 0, impactAt: H.rain.warn + i * H.rain.stagger, impacted: false, hitDone: false });
+            sim.hazards.push({ ...base, id: sim.nextId++, kind: "rain", x, y: floor, impactAt: H.rain.warn + i * H.rain.stagger, impacted: false });
         });
-        sim.events.push({ type: "shardRain" });
+        sim.events.push({ type: "shardRain", uid: owner.uid });
     }
 }
 
@@ -36,6 +37,8 @@ export function updateHazards(sim, dt) {
 
     for (let i = list.length - 1; i >= 0; i--) {
         const h = list[i];
+        const owner = sim.enemyByUid(h.ownerUid);
+        const H = owner.def.hazards;
         h.t += dt;
         let remove = false;
 
@@ -45,7 +48,7 @@ export function updateHazards(sim, dt) {
             remove = h.t > c.life || h.x < sim.bounds.minX || h.x > sim.bounds.maxX;
             if (!remove && !h.hitDone) {
                 const box = { left: h.x - c.halfWidth, right: h.x + c.halfWidth, top: floor - c.height, bottom: floor };
-                if (sim.tryHitPlayer(box, { damage: c.damage, parryable: false }, h.moveId, h.x)) h.hitDone = true;
+                if (sim.tryHitPlayer(box, { damage: c.damage, parryable: false }, h.moveId, h.x, owner)) h.hitDone = true;
             }
         } else if (h.kind === "shard") {
             const c = H.shard;
@@ -54,11 +57,11 @@ export function updateHazards(sim, dt) {
             if (remove) sim.events.push({ type: "shardBreak", x: h.x, y: h.y });
             if (!remove) {
                 const box = { left: h.x - c.halfWidth, right: h.x + c.halfWidth, top: h.y - c.height / 2, bottom: h.y + c.height / 2 };
-                const result = sim.tryHitPlayer(box, { damage: c.damage, parryable: true }, h.moveId, h.x);
+                const result = sim.tryHitPlayer(box, { damage: c.damage, parryable: h.parryable !== false }, h.moveId, h.x, owner);
                 if (result === "parried") {
-                    // A parried shard is deflected and staggers the boss a little.
+                    // A parried shard is deflected and staggers its thrower a little.
                     sim.events.push({ type: "shardBreak", x: h.x, y: h.y });
-                    sim.addStagger(B.deflectStagger);
+                    if (owner.def.stagger) sim.addStagger(owner, owner.def.stagger.deflect);
                     remove = true;
                 } else if (result === "hit") {
                     sim.events.push({ type: "shardBreak", x: h.x, y: h.y });
@@ -73,7 +76,7 @@ export function updateHazards(sim, dt) {
             }
             if (h.impacted && !h.hitDone && h.t < h.impactAt + c.active) {
                 const box = { left: h.x - c.radius, right: h.x + c.radius, top: floor - 40, bottom: floor };
-                if (sim.tryHitPlayer(box, { damage: c.damage, parryable: false }, h.moveId, h.x)) h.hitDone = true;
+                if (sim.tryHitPlayer(box, { damage: c.damage, parryable: false }, h.moveId, h.x, owner)) h.hitDone = true;
             }
             remove = h.t >= h.impactAt + c.active;
         }

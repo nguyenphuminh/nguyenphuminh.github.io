@@ -1,6 +1,6 @@
-// Habit profile (BRD 2.2.4.1): running statistics of the player's visible behaviour.
-// Each habit is a decayed ratio, so it follows the player as they change, and persists across attempts.
-import { MOVES } from "../combat/index.js";
+// Habit profile (BRD 2.2.4.1): running statistics of the player's visible behaviour, shared by all bosses and fed
+// by boss fights and mob encounters alike. Each habit is a decayed ratio, so it follows the player as they change,
+// and it persists across attempts and journeys.
 
 // name: [prior, per-sample decay]
 const HABITS = {
@@ -74,35 +74,40 @@ export function createHabitProfile(saved = null) {
     return {
         /** Feed one fixed step: the visible view after the step and the events it produced. */
         observe(view, events, dt) {
-            const b = view.boss;
             const p = view.player;
-            if (!b) return;
-            const dist = Math.abs(b.x - p.x);
+            // The enemy the knight is dealing with: an awake boss, or the nearest mob that has noticed them.
+            let focus = null;
+            for (const e of view.enemies ?? (view.boss ? [view.boss] : [])) {
+                if (e.state === "dead" || e.state === "dormant" || (!e.isBoss && !e.aware)) continue;
+                if (!focus || Math.abs(e.x - p.x) < Math.abs(focus.x - p.x)) focus = e;
+            }
+            const dist = focus ? Math.abs(focus.x - p.x) : Infinity;
 
             sampleClock += dt;
-            if (sampleClock >= 0.25 && b.state !== "dormant" && p.mode !== "dead") {
+            if (sampleClock >= 0.25 && focus && dist < 300 && p.mode !== "dead") {
                 sampleClock = 0;
                 sample("distance", Math.min(1, dist / 240));
             }
-            if (window && b.stagePart === "recovery") window.sawRecovery = true;
+            if (window) {
+                const source = (view.enemies ?? [view.boss]).find((e) => e && e.uid === window.uid);
+                if (source && source.stagePart === "recovery") window.sawRecovery = true;
+            }
 
             for (const e of events) {
-                if (e.type === "bossActionStart") {
+                if (e.type === "enemyActionStart") {
+                    if (e.kind !== "attack") continue;
                     closeWindow();
-                    const def = MOVES[e.id];
-                    if (def.kind === "attack") {
-                        window = {
-                            start: view.time, firstWindup: def.stages[0].dur, parryable: def.stages[0].telegraph === "parryable",
-                            rolled: false, earlyRoll: false, towardRoll: false, jumped: false, parried: false, parrySuccess: false,
-                            reaction: null, sawRecovery: false, punished: false,
-                        };
-                    }
-                } else if (e.type === "bossActionEnd") {
-                    closeWindow();
+                    window = {
+                        uid: e.uid, start: view.time, firstWindup: e.firstWindup, parryable: e.telegraph === "parryable",
+                        rolled: false, earlyRoll: false, towardRoll: false, jumped: false, parried: false, parrySuccess: false,
+                        reaction: null, sawRecovery: false, punished: false,
+                    };
+                } else if (e.type === "enemyActionEnd") {
+                    if (window && e.uid === window.uid) closeWindow();
                 } else if (e.type === "playerAction") {
                     const isAttack = e.action === "light" || e.action === "heavy";
                     if (e.action !== "jump") sample("aggression", isAttack ? 1 : 0);
-                    if (e.action === "heal") {
+                    if (e.action === "heal" && focus && dist < 300) {
                         attempt.heals += 1;
                         const far = dist > FAR;
                         if (far) attempt.farHeals += 1;
@@ -126,10 +131,10 @@ export function createHabitProfile(saved = null) {
                         window.jumped = true;
                         attempt.jumps += 1;
                     }
-                } else if (e.type === "parry" && window) {
+                } else if (e.type === "parry" && window && e.sourceUid === window.uid) {
                     window.parrySuccess = true;
                     attempt.parryHits += 1;
-                } else if (e.type === "bossHit" && window && window.sawRecovery) {
+                } else if (e.type === "enemyHit" && window && window.sawRecovery && e.uid === window.uid) {
                     window.punished = true;
                 }
             }

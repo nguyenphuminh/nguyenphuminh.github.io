@@ -12,7 +12,7 @@ export function createPlayer(x, floorY) {
         stamina: P.maxStamina, maxStamina: P.maxStamina, staminaDelay: 0, staminaEmpty: false,
         heals: P.maxHeals, maxHeals: P.maxHeals,
         state: "idle", stateTime: 0,
-        combo: 0, chainQueued: false, attackSerial: 0, attackHit: false, airAttack: false,
+        combo: 0, chainQueued: false, attackSerial: 0, attackHit: false, attackHitIds: new Set(), airAttack: false,
         invuln: 0, buffer: null, bufferTime: 0, healApplied: false, rollDir: 1,
     };
 }
@@ -43,10 +43,11 @@ export function playerHurtbox(p) {
     return { left: p.x - P.halfWidth, right: p.x + P.halfWidth, top: p.y - h, bottom: p.y };
 }
 
-// The player's attack hitbox while an attack is in its active window and has not hit yet.
+// The player's attack hitbox while an attack is in its active window. Each enemy can be hit once per attack
+// (tracked in attackHitIds); attackHit says whether the attack has landed on anything.
 export function playerAttackBox(p) {
     const def = attackDef(p);
-    if (!def || p.attackHit) return null;
+    if (!def) return null;
     if (p.stateTime < def.windup || p.stateTime >= def.windup + def.active) return null;
     const a = p.x + p.facing * 4;
     const b = p.x + p.facing * def.reach;
@@ -118,6 +119,7 @@ function startAttack(p, kind) {
     setState(p, kind);
     p.attackSerial += 1;
     p.attackHit = false;
+    p.attackHitIds.clear();
     p.chainQueued = false;
 }
 
@@ -159,6 +161,10 @@ export function updatePlayer(p, intent, ctx, dt) {
         case "hurt":
             p.vx = approach(p.vx, 0, 500 * dt);
             if (p.stateTime >= P.hurt.stun) setState(p, p.grounded ? "idle" : "fall");
+            break;
+        case "deflected":
+            p.vx = approach(p.vx, 0, 500 * dt);
+            if (p.stateTime >= P.deflected.stun) setState(p, p.grounded ? "idle" : "fall");
             break;
         case "roll": {
             const t = p.stateTime / P.roll.duration;
@@ -258,11 +264,11 @@ export function updatePlayer(p, intent, ctx, dt) {
     }
 }
 
-// Applies boss damage to the player. dir = knockback direction (-1 or 1).
-export function damagePlayer(p, damage, dir, events, moveId, knockback = P.hurt.knockback) {
+// Applies enemy damage to the player. dir = knockback direction (-1 or 1); source = the enemy that dealt it.
+export function damagePlayer(p, damage, dir, events, moveId, knockback = P.hurt.knockback, source = null) {
     if (p.state === "heal" && !p.healApplied) events.push({ type: "healCancel" });
     p.hp = Math.max(0, p.hp - damage);
-    events.push({ type: "playerHit", damage, moveId, x: p.x, y: p.y - 14 });
+    events.push({ type: "playerHit", damage, moveId, sourceUid: source?.uid ?? null, isBoss: Boolean(source?.isBoss), x: p.x, y: p.y - 14 });
     p.buffer = null;
     p.chainQueued = false;
     if (p.hp <= 0) {
@@ -283,11 +289,19 @@ export function grabPlayer(p, events) {
     p.vy = 0;
 }
 
-export function throwPlayer(p, damage, dir, events, moveId, speed) {
+export function throwPlayer(p, damage, dir, events, moveId, speed, source = null) {
     p.state = "hurt";
-    damagePlayer(p, damage, dir, events, moveId, speed);
+    damagePlayer(p, damage, dir, events, moveId, speed, source);
     if (p.state === "hurt") p.vy = -150;
     p.grounded = false;
+}
+
+/** The knight's attack was turned aside by an enemy's parry stance: a short recoil, no damage. */
+export function deflectPlayer(p, events, source) {
+    setState(p, "deflected");
+    p.vx = -p.facing * P.deflected.knockback;
+    p.chainQueued = false;
+    events.push({ type: "deflected", sourceUid: source.uid, isBoss: source.isBoss, x: p.x + p.facing * 12, y: p.y - 16 });
 }
 
 export function restPlayer(p) {

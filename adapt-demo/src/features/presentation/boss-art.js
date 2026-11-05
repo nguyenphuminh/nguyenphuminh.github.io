@@ -1,7 +1,7 @@
 // The Mirrorwright: a tall obsidian construct with a mirror-glass greatsword, glass crown and
 // glowing accent cracks (cyan in phase 1; recolored to magenta for phase 2). Drawn facing right.
 import { ACCENT_TO_PHASE2, C, R } from "./palette.js";
-import { framesToSheet, hash2, lerpPose } from "./pixel.js";
+import { framesToSheet, hash2, lerpPose, line, paint, poly } from "./pixel.js";
 import { Ops, add, buildCharacter, dir, mix, renderOps } from "./rig.js";
 
 export const BOSS_FRAME = { w: 144, h: 120, ax: 72, ay: 112 };
@@ -16,6 +16,7 @@ const BASE = {
     sway: 0.2, spin: 0, plant: 1,
     eyes: 0.7, glow: 0, crack: 0, burst: 0, dissolve: 0,
     handOpen: 0, holdShard: 0,
+    hammer: 0, restBlade: 0, strike: 0, // cutscene-only: a forging hammer in hand, the blade planted beside him
 };
 
 function ik(s, t, l1, l2, bend = 1) {
@@ -169,6 +170,16 @@ function drawBoss(px, pose, frameIndex, animName) {
         o.cap(add(handF, bd, -3), add(handF, bd, 2), 1.2, 1.2, R.obsidianDark);
     }
 
+    // Forging hammer (cutscene): a dark haft with a glass-edged head
+    let hammerHead = null;
+    if (p.hammer) {
+        const h0 = add(handF, bd, -2), h1 = add(handF, bd, 12);
+        o.cap(h0, h1, 1.2, 1.2, R.obsidianDark, { noPlant: true, shade: "top" });
+        hammerHead = add(handF, bd, 13.5);
+        o.poly([add(add(hammerHead, bp, 4.5), bd, -2.5), add(add(hammerHead, bp, 4.5), bd, 2.5), add(add(hammerHead, bp, -4.5), bd, 2.5), add(add(hammerHead, bp, -4.5), bd, -2.5)], R.obsidian, { sep: C.sep, noPlant: true });
+        o.line(add(add(hammerHead, bp, -4.5), bd, 2.5), add(add(hammerHead, bp, 4.5), bd, 2.5), C.cyan1);
+    }
+
     // Front arm with a crowned pauldron
     o.cap(shF, elbowF, 3.7, 3.2, R.obsidian, { sep: C.sep, shade: "top" });
     o.cap(elbowF, handF, 3.3, 2.9, R.obsidian, { sep: C.sep, shade: "top" });
@@ -181,11 +192,32 @@ function drawBoss(px, pose, frameIndex, animName) {
 
     // Record useful points (anchor-relative) for the game, e.g. where a grabbed player hangs.
     const rel = (q) => [Math.round(q[0] + ox - BOSS_FRAME.ax), Math.round(q[1] + oy - BOSS_FRAME.ay)];
-    (points[animName] ??= [])[frameIndex] = { backHand: rel(handB), bladeTip: rel(add(handF, bd, 4 + L.blade * p.blade)), core: rel(core) };
+    (points[animName] ??= [])[frameIndex] = { backHand: rel(handB), bladeTip: rel(add(handF, bd, 4 + L.blade * p.blade)), core: rel(core), ...(hammerHead ? { hammerHead: rel(hammerHead) } : {}) };
+
+    // The mirror-glass greatsword planted in the floor behind him (cutscene), drawn in frame space.
+    if (p.restBlade) {
+        const bx = BOSS_FRAME.ax - 34, fy = BOSS_FRAME.ay;
+        paint(px, poly([[bx - 3, fy - 34], [bx + 3, fy - 34], [bx + 2, fy - 4], [bx, fy + 1], [bx - 2, fy - 4]]), R.glass, { sep: C.sep });
+        line(px, bx, fy - 32, bx, fy - 6, C.white);
+        paint(px, poly([[bx - 6, fy - 37], [bx + 6, fy - 37], [bx + 6, fy - 34], [bx - 6, fy - 34]]), R.obsidianDark, { sep: C.sep });
+        paint(px, poly([[bx - 1.5, fy - 46], [bx + 1.5, fy - 46], [bx + 1.5, fy - 37], [bx - 1.5, fy - 37]]), R.obsidianDark);
+        px.set(bx, fy - 36, C.cyan2);
+        line(px, bx - 1, fy - 22, bx + 1, fy - 16, C.cyan1);
+    }
 
     // Emissive aura: glow and burst shards (outside the outline)
     const cx = core[0] + ox, cy = core[1] + oy;
-    px.emit = () => emitBoss(px, p, frameIndex, cx, cy);
+    const sparkAt = p.strike && hammerHead ? [Math.round(hammerHead[0] + ox), Math.round(hammerHead[1] + oy + 3)] : null;
+    px.emit = () => {
+        emitBoss(px, p, frameIndex, cx, cy);
+        if (sparkAt) {
+            for (let i = 0; i < 12; i++) {
+                const a = -Math.PI * (0.1 + hash2(i, frameIndex, 21) * 0.8), r = 2 + hash2(i, frameIndex, 22) * 7;
+                const gx = Math.round(sparkAt[0] + Math.cos(a) * r), gy = Math.round(sparkAt[1] + Math.sin(a) * r);
+                if (!px.get(gx, gy)) px.set(gx, gy, i % 3 ? C.cyan2 : C.white);
+            }
+        }
+    };
 }
 
 function emitBoss(px, p, frameIndex, cx, cy) {
@@ -364,6 +396,28 @@ function specs() {
         { ...kneel, head: 50, lean: 40, crack: 1, eyes: 0.1, dissolve: 1 },
     ];
 
+    // Cutscene: hammering at the glass anvil ~30 px in front of him, his blade planted behind him.
+    const smith = { blade: 0, hammer: 1, restBlade: 1, shB: -5, elB: 30, hipF: 18, kneeF: -14, hipB: -14, kneeB: -10, sway: 0.25, eyes: 0.7 };
+    const forge = [
+        { ...smith, shF: 150, elF: 40, sword: 195, lean: 6 },
+        { ...smith, shF: 168, elF: 45, sword: 212, lean: 2 },
+        { ...smith, shF: 90, elF: 0, sword: 160, lean: 14 },
+        { ...smith, shF: 18, elF: -14, sword: 112, lean: 25, strike: 1, eyes: 1 },
+        { ...smith, shF: 45, elF: -5, sword: 125, lean: 17 },
+        { ...smith, shF: 110, elF: 20, sword: 165, lean: 10 },
+    ];
+    const liftBlade = [
+        { ...smith, shF: 40, elF: -10, sword: 112, lean: 16 },
+        { ...smith, hammer: 0, shF: -10, elF: 30, sword: 100, lean: 0, eyes: 0.9 },
+        { ...smith, hammer: 0, shF: -75, elF: 8, sword: 100, lean: -16, hipB: -24, kneeB: -16, hipF: 24, kneeF: -22 },
+        { ...smith, hammer: 0, restBlade: 0, blade: 1, shF: -35, elF: 20, sword: -75, lean: -6, eyes: 1 },
+        { ...lp(smith, hold[0], 0.6), hammer: 0, restBlade: 0, blade: 1, shF: 110, elF: 45, sword: 150, eyes: 1 },
+        { ...idle[0] },
+    ];
+    // Defeated: kneeling on one knee, both hands on the hilt of the planted blade.
+    const fallenBase = { hipF: 82, kneeF: -94, hipB: -2, kneeB: -96, lean: 20, head: 30, shF: 62, elF: 18, sword: 0, twoHand: 1, blade: 0.78, sway: 0.05, eyes: 0.25 };
+    const fallen = [0, 1, 2, 1].map((b) => ({ ...fallenBase, lean: 20 + b * 0.6, head: 30 + b * 1.5, eyes: 0.2 + b * 0.05 }));
+
     return {
         dormant: { poses: dormant, fps: 3, loop: true },
         rise: { poses: rise, fps: 6 },
@@ -385,6 +439,10 @@ function specs() {
         staggered: { poses: staggered, fps: 4, loop: true },
         transition: { poses: transition, fps: 10 / 1.8 },
         death: { poses: death, fps: 6 },
+        // Appended (cutscenes) so the frames of every earlier anim keep their sheet positions.
+        forge: { poses: forge, fps: 8, loop: true },
+        liftBlade: { poses: liftBlade, fps: 6 },
+        fallen: { poses: fallen, fps: 3, loop: true },
     };
 }
 

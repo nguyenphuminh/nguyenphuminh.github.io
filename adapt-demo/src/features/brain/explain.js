@@ -1,6 +1,5 @@
 // Plain-words explanations of what the boss has learned (BRD 2.2.6, 2.2.7).
 // Every line is computed from the saved habit profile or the attempt's counters; nothing is invented.
-import { MOVES } from "../combat/index.js";
 
 const pct = (v) => `${Math.round(v * 100)}%`;
 
@@ -30,8 +29,11 @@ export function habitLines(habits) {
     return lines.sort((a, b) => b.strength - a.strength);
 }
 
-/** One line for the Fallen screen: the most notable thing the boss saw during this attempt. */
-export function attemptLesson({ counters: c, moveStats }) {
+/**
+ * One line for the Fallen screen: the most notable thing the Mirror saw since the knight last rested.
+ * moveStats/bossDef describe the boss fight when the knight fell to a boss (otherwise empty/null).
+ */
+export function attemptLesson({ counters: c, moveStats = {}, bossDef = null }) {
     const options = [];
     if (c.rolls >= 3 && c.earlyRolls / c.rolls >= 0.5) options.push([c.earlyRolls / c.rolls + 0.2, `It saw you roll early ${c.earlyRolls} of ${c.rolls} times.`]);
     if (c.parries >= 3) options.push([c.parries / Math.max(1, c.parryable) + 0.1, `It saw you try ${c.parries} parries. ${c.parryHits} worked.`]);
@@ -40,16 +42,16 @@ export function attemptLesson({ counters: c, moveStats }) {
     if (c.recoveries >= 3) options.push([c.punishes / c.recoveries, `You punished ${c.punishes} of its ${c.recoveries} recoveries.`]);
     let best = null;
     for (const [id, s] of Object.entries(moveStats)) if (s.hits > 0 && (!best || s.hits > best[1].hits)) best = [id, s];
-    if (best) options.push([0.45, `${MOVES[best[0]].label} struck you ${best[1].hits} time${best[1].hits === 1 ? "" : "s"}.`]);
-    if (options.length === 0) return "It watched you closely.";
+    if (best && bossDef) options.push([0.45, `${bossDef.moves[best[0]].label} struck you ${best[1].hits} time${best[1].hits === 1 ? "" : "s"}.`]);
+    if (options.length === 0) return "The Mirror watched you closely.";
     options.sort((a, b) => b[0] - a[0]);
     return options[0][1];
 }
 
 /** Moves whose preference changed most since before the boss met the player. */
-export function preferenceChanges(before, now, limit = 5) {
+export function preferenceChanges(before, now, bossDef, limit = 5) {
     return Object.keys(now)
-        .map((id) => ({ id, label: MOVES[id].label, before: before[id], now: now[id], ratio: now[id] / Math.max(before[id], 1e-6) }))
+        .map((id) => ({ id, label: bossDef.moves[id].label, before: before[id], now: now[id], ratio: now[id] / Math.max(before[id], 1e-6) }))
         .sort((a, b) => Math.abs(Math.log(b.ratio)) - Math.abs(Math.log(a.ratio)))
         .slice(0, limit);
 }
