@@ -1,6 +1,7 @@
 // The Controls screen (BRD 2.2.2.8), shared by the title menu and the pause menu.
 import { drawText } from "../presentation/index.js";
 import { DEFAULT_CONTROLS, PLAYER_ACTIONS, assignKey, clearKey, copyControls, keyLabel } from "./controls.js";
+import { padLabel } from "./gamepad.js";
 import { menuInput } from "./input.js";
 import { COLORS, drawPanel } from "./ui.js";
 
@@ -23,7 +24,7 @@ export function createControlsPanel(app) {
                     armed = true;
                     return false;
                 }
-                if (input.isKeyPressed("Escape")) {
+                if (input.isKeyPressed("Escape") || app.pad.pressed("back")) {
                     waiting = false;
                     message = "Change cancelled.";
                     app.audio.play("uiBack");
@@ -45,8 +46,8 @@ export function createControlsPanel(app) {
                 return false;
             }
 
-            const menu = menuInput(input);
-            if (input.isKeyPressed("Escape")) {
+            const menu = menuInput(input, app.pad);
+            if (input.isKeyPressed("Escape") || app.pad.pressed("back")) {
                 app.audio.play("uiBack");
                 return true;
             }
@@ -65,7 +66,7 @@ export function createControlsPanel(app) {
                 app.audio.play(result.error ? "uiBack" : "uiSelect");
                 return false;
             }
-            if (input.isKeyPressed("Enter") || input.isKeyPressed("Space")) {
+            if (input.isKeyPressed("Enter") || input.isKeyPressed("Space") || app.pad.pressed("confirm")) {
                 app.audio.play("uiSelect");
                 if (row === RESET_ROW) {
                     app.setControls(copyControls(DEFAULT_CONTROLS));
@@ -85,10 +86,12 @@ export function createControlsPanel(app) {
             drawPanel(ctx, left, top, width, 182);
             drawText(ctx, "CONTROLS", 240, top + 7, { align: "center", color: COLORS.gold });
             const colA = left + 14;
-            const col1 = left + 170;
-            const col2 = left + 262;
+            const col1 = left + 140;
+            const col2 = left + 214;
+            const colPad = left + 288;
             drawText(ctx, "key 1", col1, top + 21, { color: COLORS.dim });
             drawText(ctx, "key 2", col2, top + 21, { color: COLORS.dim });
+            drawText(ctx, "controller", colPad, top + 21, { color: COLORS.dim });
             PLAYER_ACTIONS.forEach((action, i) => {
                 const y = top + 33 + i * 12;
                 const active = i === row;
@@ -99,15 +102,18 @@ export function createControlsPanel(app) {
                     if (selected && waiting) label = Math.floor(time * 3) % 2 ? "press a key" : "";
                     if (selected) {
                         ctx.fillStyle = "rgba(242, 196, 107, 0.18)";
-                        ctx.fillRect(x - 4, y - 2, 86, 11);
+                        ctx.fillRect(x - 4, y - 2, 70, 11);
                     }
                     drawText(ctx, label, x, y, { color: selected ? COLORS.gold : COLORS.dim });
                 });
+                // The controller layout is fixed (BRD 2.2.2.9): shown, not changeable.
+                drawText(ctx, padLabel(app.pad.style, action.id), colPad, y, { color: COLORS.dim });
             });
             const resetY = top + 33 + RESET_ROW * 12 + 2;
             drawText(ctx, row === RESET_ROW ? "> Reset to Defaults" : "  Reset to Defaults", colA, resetY, { color: row === RESET_ROW ? COLORS.gold : COLORS.text });
-            drawText(ctx, "Pause / back: Esc (fixed)", col1, resetY, { color: COLORS.dim });
-            const hint = waiting ? "Press the new key, or Esc to cancel" : "Enter: change   Left/Right: key 1 or 2   Backspace: clear   Esc: back";
+            drawText(ctx, `Pause: Esc / ${padLabel(app.pad.style, "pause")} (fixed)`, col1, resetY, { color: COLORS.dim });
+            const back = app.hint("back");
+            const hint = waiting ? `Press the new key, or ${back} to cancel` : `${app.hint("confirm")}: change   Left/Right: key 1 or 2   Backspace: clear   ${back}: back`;
             drawText(ctx, message || hint, 240, top + 164, { align: "center", color: message ? COLORS.cyan : COLORS.dim });
         },
     };

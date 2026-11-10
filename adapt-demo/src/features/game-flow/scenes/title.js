@@ -42,8 +42,8 @@ export class TitleScene extends PixelScene {
 
     tick() {
         const app = this.app;
-        if (anyKeyPressed(this.input)) app.startMusic();
-        const menu = menuInput(this.input);
+        if (anyKeyPressed(this.input, this.pad)) app.startMusic();
+        const menu = menuInput(this.input, this.pad);
 
         if (this.view === "controls") {
             if (this.controlsPanel.tick(this.input)) this.view = "menu";
@@ -128,7 +128,8 @@ export class TitleScene extends PixelScene {
         if (BOSS_IDS.some((id) => !app.policies[id])) {
             drawText(ctx, "A trained model is missing: that boss will learn from scratch.", 240, 258, { align: "center", color: COLORS.red });
         } else {
-            drawText(ctx, "W/S to choose, Enter to confirm", 240, 258, { align: "center", color: COLORS.dim });
+            const hint = app.lastDevice === "pad" ? `D-pad to choose, ${app.hint("confirm")} to confirm` : "W/S to choose, Enter to confirm";
+            drawText(ctx, hint, 240, 258, { align: "center", color: COLORS.dim });
         }
     }
 }

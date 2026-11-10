@@ -63,7 +63,7 @@ export function drawDialogue(ctx, { name = "", portrait = null, text = "", shown
 }
 
 /** "Hold Esc to skip" with a pixel ring that fills with the hold progress (drawn only while holding). */
-export function drawSkipRing(ctx, progress) {
+export function drawSkipRing(ctx, progress, label = "Hold Esc to skip") {
     if (!(progress > 0)) return;
     const cx = 463, cy = 14, steps = 64;
     for (let i = 0; i < steps; i++) {
@@ -72,7 +72,7 @@ export function drawSkipRing(ctx, progress) {
         ctx.fillStyle = on ? "#e8e6f0" : "#3a3550";
         for (const r of [6, 7]) ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1);
     }
-    drawText(ctx, "Hold Esc to skip", 451, 10, { align: "right", color: "#b8b4cc" });
+    drawText(ctx, label, 451, 10, { align: "right", color: "#b8b4cc" });
 }
 
 let tabletCanvas = null;

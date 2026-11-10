@@ -8,7 +8,6 @@ import { BOSS_LINES, CUTSCENES, INSCRIPTIONS, createCutscene, reflectionLine } f
 import { PixelScene } from "./base.js";
 import { PropActor, SpriteActor, syncEnemy, syncPlayer } from "../actors.js";
 import { actionPressed, anyKeyPressed, menuInput, pressed, readIntent } from "../input.js";
-import { actionKeyLabel } from "../controls.js";
 import { createControlsPanel } from "../controls-panel.js";
 import { COLORS, drawMenu, drawPanel, formatTime, wrapText } from "../ui.js";
 
@@ -191,6 +190,7 @@ export class WorldScene extends PixelScene {
                 this.dawn = on;
             },
             fallsLine: () => reflectionLine(this.app.memory.stats.falls),
+            skipHint: () => `Hold ${this.app.hint("back")} to skip`,
         };
         this.cutscene = { runner: createCutscene(script, host), after, id };
         this.setMode("cutscene");
@@ -231,20 +231,20 @@ export class WorldScene extends PixelScene {
         if (this.reading) return this.tickReading();
         if (this.paused) return this.tickPause();
         if (this.mode === "cutscene") {
-            if (this.cutscene.runner.update(dt, this.input)) this.endCutscene();
+            if (this.cutscene.runner.update(dt, this.cutsceneInput())) this.endCutscene();
             this.fx.update(dt);
             this.recordHistory();
             return;
         }
         const playing = this.mode === "explore" || this.mode === "intro" || this.mode === "fight";
-        if (playing && pressed(this.input, "pause")) {
+        if (playing && pressed(this.input, "pause", this.pad)) {
             this.paused = true;
             this.pauseIndex = 0;
             app.audio.play("uiSelect");
             return;
         }
         this.modeTime += dt;
-        const intent = playing ? readIntent(this.input, app.controls) : NO_INTENT;
+        const intent = playing ? readIntent(this.input, app.controls, this.pad) : NO_INTENT;
 
         if (this.hitstop > 0) {
             this.hitstop -= 1;
@@ -298,18 +298,18 @@ export class WorldScene extends PixelScene {
                 return;
             }
             const tablet = area.inscriptions.find((ins) => nearX(area, p.x, ins.x));
-            const key = actionKeyLabel(app.controls, "interact");
+            const key = app.hint("interact");
             if (nearX(area, p.x, area.shrineX) && p.state !== "rest") {
                 this.prompt = sim.threatsNear(REST_BLOCK_RANGE).length ? "Enemies are near" : `[${key}] Rest at the shrine`;
             } else if (tablet) this.prompt = `[${key}] Read`;
             else if (nearVeil(area, p.x)) this.prompt = `[${key}] Pass through the veil`;
-            if (actionPressed(this.input, app.controls, "interact") && p.grounded) {
+            if (actionPressed(this.input, app.controls, "interact", this.pad) && p.grounded) {
                 if (nearX(area, p.x, area.shrineX) && p.state !== "rest") {
                     if (!sim.threatsNear(REST_BLOCK_RANGE).length) this.rest();
                 } else if (tablet) {
                     const ins = INSCRIPTIONS[tablet.id];
                     // Inscriptions name keys as {action}; show the player's chosen keys (BRD 2.2.2.8).
-                    this.reading = ins ? { ...ins, text: ins.text.replace(/\{(\w+)\}/g, (_, id) => actionKeyLabel(app.controls, id)) } : null;
+                    this.reading = ins ? { ...ins, text: ins.text.replace(/\{(\w+)\}/g, (_, id) => app.hint(id)) } : null;
                     if (this.reading) app.audio.play("tablet");
                 } else if (nearVeil(area, p.x)) {
                     app.audio.play("veil");
@@ -334,7 +334,7 @@ export class WorldScene extends PixelScene {
             if (defeat) this.playCutscene(defeat, () => this.setMode("card"));
             else this.setMode("card");
         } else if (this.mode === "card") {
-            if ((this.modeTime > 3.5 && anyKeyPressed(this.input)) || this.modeTime > 8) {
+            if ((this.modeTime > 3.5 && anyKeyPressed(this.input, this.pad)) || this.modeTime > 8) {
                 if (this.fadeTarget !== 1) this.fadeTo(1, 2);
             }
             if (this.fadeTarget === 1 && this.fade >= 1) app.go("memory", { from: "victory", bossId: this.bossId });
@@ -441,8 +441,8 @@ export class WorldScene extends PixelScene {
     }
 
     tickReading() {
-        const menu = menuInput(this.input);
-        if (menu.back || menu.confirm || actionPressed(this.input, this.app.controls, "interact")) {
+        const menu = menuInput(this.input, this.pad);
+        if (menu.back || menu.confirm || actionPressed(this.input, this.app.controls, "interact", this.pad)) {
             this.reading = null;
             this.app.audio.play("uiBack");
         }
@@ -450,7 +450,7 @@ export class WorldScene extends PixelScene {
 
     tickPause() {
         const app = this.app;
-        const menu = menuInput(this.input);
+        const menu = menuInput(this.input, this.pad);
         if (this.pauseControls) {
             if (this.controlsPanel.tick(this.input)) this.pauseControls = false;
             return;
@@ -474,6 +474,17 @@ export class WorldScene extends PixelScene {
             app.saveMemory();
             app.go("title");
         }
+    }
+
+    // Cutscenes read confirm keys and a held Escape; a controller's A and held B count as those (BRD 2.2.2.9).
+    cutsceneInput() {
+        const input = this.input;
+        const pad = this.pad;
+        const confirmKeys = ["Enter", "Space", "KeyJ", "KeyF"];
+        return {
+            isKeyPressed: (k) => input.isKeyPressed(k) || (confirmKeys.includes(k) && pad.pressed("confirm")),
+            isKeyDown: (k) => input.isKeyDown(k) || (k === "Escape" && pad.held("back")),
+        };
     }
 
     recordHistory() {
@@ -882,7 +893,7 @@ export class WorldScene extends PixelScene {
         drawText(ctx, "REFLECTION BROKEN", 240, 90, { align: "center", scale: 3, color: COLORS.gold });
         const attempts = this.app.memory.journey.attempts[this.bossId] ?? 0;
         drawText(ctx, `${this.bossDef.name}     Attempts ${attempts}     Fight time ${formatTime(this.fightTime)}`, 240, 128, { align: "center", color: COLORS.text });
-        if (this.modeTime > 3.5) drawText(ctx, "Press any key", 240, 160, { align: "center", color: COLORS.dim });
+        if (this.modeTime > 3.5) drawText(ctx, this.app.lastDevice === "pad" ? "Press any button" : "Press any key", 240, 160, { align: "center", color: COLORS.dim });
         ctx.globalAlpha = 1;
     }
 

@@ -10,7 +10,8 @@ import { TitleScene } from "./scenes/title.js";
 import { WorldScene } from "./scenes/world.js";
 import { MemoryScene } from "./scenes/memory.js";
 import { CreditsScene } from "./scenes/credits.js";
-import { loadControls, saveControls } from "./controls.js";
+import { actionKeyLabel, loadControls, saveControls } from "./controls.js";
+import { createGamepad, padLabel } from "./gamepad.js";
 
 const SCENES = { loading: LoadingScene, title: TitleScene, world: WorldScene, memory: MemoryScene, credits: CreditsScene };
 const modelUrl = (bossId) => `./models/${bossId}.json`;
@@ -49,6 +50,15 @@ export function createGameFlow(game) {
         brains: {},
         storage: safeStorage(),
         controls: null, // the player's chosen keys (BRD 2.2.2.8)
+        pad: createGamepad(), // the controller (BRD 2.2.2.9)
+        lastDevice: "keyboard", // hints name the buttons of the device used last
+
+        /** The name of the key or button for an action, on the device used last. */
+        hint(action) {
+            if (app.lastDevice === "pad") return padLabel(app.pad.style, action);
+            const fixed = { confirm: "Enter", back: "Esc", pause: "Esc" };
+            return fixed[action] ?? actionKeyLabel(app.controls, action);
+        },
         musicStarted: false,
 
         setControls(keys) {

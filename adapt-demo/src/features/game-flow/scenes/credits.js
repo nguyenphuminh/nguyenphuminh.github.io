@@ -38,7 +38,7 @@ export class CreditsScene extends PixelScene {
 
     tick() {
         const done = this.scrollY() < -this.height - 20;
-        if ((this.time > 4 && anyKeyPressed(this.input)) || done) {
+        if ((this.time > 4 && anyKeyPressed(this.input, this.pad)) || done) {
             if (this.fadeTarget !== 1) this.fadeTo(1, 1.5);
         }
         if (this.fadeTarget === 1 && this.fade >= 1) this.app.go("title");
@@ -58,6 +58,6 @@ export class CreditsScene extends PixelScene {
             if (text && y > -30 && y < 280) drawText(ctx, text, 240, Math.round(y), { align: "center", scale, color });
             y += 12 * scale + 2;
         }
-        if (this.time > 4) drawText(ctx, "Press any key", 470, 258, { align: "right", color: COLORS.dim });
+        if (this.time > 4) drawText(ctx, this.app.lastDevice === "pad" ? "Press any button" : "Press any key", 470, 258, { align: "right", color: COLORS.dim });
     }
 }

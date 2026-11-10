@@ -44,7 +44,7 @@ export class MemoryScene extends PixelScene {
     tick() {
         const app = this.app;
         if (this.time < 0.6) return; // a key pressed to skip the victory card must not pick a menu item here
-        const menu = menuInput(this.input);
+        const menu = menuInput(this.input, this.pad);
         if (this.bosses.length > 1 && (menu.left || menu.right)) {
             this.tab = (this.tab + (menu.right ? 1 : this.bosses.length - 1)) % this.bosses.length;
             app.audio.play("uiMove");

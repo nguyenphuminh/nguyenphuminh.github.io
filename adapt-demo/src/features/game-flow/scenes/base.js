@@ -18,6 +18,10 @@ export class PixelScene extends Scene {
         return this.game.input;
     }
 
+    get pad() {
+        return this.app.pad;
+    }
+
     shake(power, duration = 0.25) {
         if (power >= this.shakePower || this.shakeTime <= 0) {
             this.shakePower = power;
@@ -31,6 +35,13 @@ export class PixelScene extends Scene {
     }
 
     update(dt) {
+        const app = this.app;
+        app.pad.poll();
+        if (app.pad.used) {
+            app.lastDevice = "pad";
+            if (app.pad.anyPressed) this.game.audio.unlock?.(); // browsers may still wait for a key or click
+        }
+        if (this.input.keysPressed.size > 0) app.lastDevice = "keyboard";
         this.time += dt;
         this.shakeTime = Math.max(0, this.shakeTime - dt);
         if (this.fade !== this.fadeTarget) {

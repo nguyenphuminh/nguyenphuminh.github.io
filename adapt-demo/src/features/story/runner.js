@@ -241,7 +241,7 @@ export function createCutscene(script, host) {
                 drawDialogue(ctx, { ...overlay.dialogue, shown: Math.floor(overlay.dialogue.shown) });
                 ctx.restore();
             }
-            drawSkipRing(ctx, skipHeld / SKIP_HOLD);
+            drawSkipRing(ctx, skipHeld / SKIP_HOLD, host.skipHint?.());
         },
     };
 }
